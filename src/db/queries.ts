@@ -98,18 +98,23 @@ export async function getSessionWithTrackHistory(sessionId: number) {
 }
 
 // Create a reference lap. Used both by the local telemetry app's API
-// upload (owner-only, isPublic optional) and by the coach-facing
-// "Global reference laps" page (always isPublic: true).
+// upload (owner-only, isPublic optional, no carDisplay) and by the
+// coach-facing "Global reference laps" page (always isPublic: true,
+// carDisplay typed in by the coach).
 export async function createReferenceLap(input: {
   ownerId: number;
   track: string;
   car: string;
+  carDisplay?: string | null;
   label: string;
   data: unknown;
   lapTimeSeconds: number | null;
   isPublic: boolean;
 }) {
-  const [created] = await db.insert(referenceLaps).values(input).returning({ id: referenceLaps.id });
+  const [created] = await db
+    .insert(referenceLaps)
+    .values({ ...input, carDisplay: input.carDisplay ?? null })
+    .returning({ id: referenceLaps.id });
   return created;
 }
 
@@ -133,6 +138,7 @@ export async function getAvailableReferenceLaps(userId: number) {
       ownerId: true,
       track: true,
       car: true,
+      carDisplay: true,
       label: true,
       lapTimeSeconds: true,
       isPublic: true,

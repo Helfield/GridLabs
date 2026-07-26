@@ -111,6 +111,7 @@ export function referenceLapsPage(
     id: number;
     track: string;
     car: string;
+    carDisplay: string | null;
     label: string;
     lapTimeSeconds: number | null;
     createdAt: Date;
@@ -125,9 +126,10 @@ ${laps
   .map(
     (l) => `
   <div class="ref">
-    <div>
+    <div style="min-width:0">
       <div class="ref__label">${escapeHtml(l.label)}</div>
-      <div class="ref__meta">${escapeHtml(l.track)} · ${escapeHtml(l.car)} · ${escapeHtml(shortDate(l.createdAt))}</div>
+      <div class="ref__meta">${escapeHtml(l.track)} · ${escapeHtml(l.carDisplay || l.car)} · ${escapeHtml(shortDate(l.createdAt))}</div>
+      ${l.carDisplay ? `<div class="ref__meta" style="opacity:.6">matches: ${escapeHtml(l.car)}</div>` : ""}
     </div>
     <div style="display:flex;align-items:center;gap:16px">
       <span class="ref__time">${escapeHtml(lapTime(l.lapTimeSeconds))}</span>
@@ -155,12 +157,16 @@ ${laps
     <div class="panel__body">
       <form action="/coach/reference-laps" method="post" enctype="multipart/form-data">
         <label class="field">
-          <span class="field__label">Track</span>
+          <span class="field__label">Track — exactly as the game reports it</span>
           <input type="text" name="track" required placeholder="e.g. Monza Curva Grande Circuit">
         </label>
         <label class="field">
-          <span class="field__label">Car</span>
-          <input type="text" name="car" required placeholder="e.g. United Autosports 2025 #23:ELMS">
+          <span class="field__label">Car — exactly as the game reports it</span>
+          <input type="text" name="car" required placeholder="e.g. GTE · United Autosports 2025 #23:ELMS">
+        </label>
+        <label class="field">
+          <span class="field__label">Car name to show students (optional)</span>
+          <input type="text" name="carDisplay" placeholder="e.g. McLaren 720S GT3">
         </label>
         <label class="field">
           <span class="field__label">Label</span>
@@ -174,7 +180,8 @@ ${laps
           <span class="field__label">Reference lap file (.json)</span>
           <input type="file" name="dataFile" accept="application/json" required>
         </label>
-        <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Upload &amp; publish to everyone</button>
+        <p class="hint">Track and car must match the sim's own wording character-for-character — that's what the app matches on when it decides which laps apply to what you're driving. The display name is cosmetic and matches nothing.</p>
+        <button class="btn btn--discord" style="background:var(--fastest);margin-top:6px" type="submit">Upload &amp; publish to everyone</button>
       </form>
     </div>
   </section>

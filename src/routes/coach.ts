@@ -59,6 +59,9 @@ coachRoutes.post("/reference-laps", async (c) => {
   const body = await c.req.parseBody();
   const track = typeof body.track === "string" ? body.track.trim() : "";
   const car = typeof body.car === "string" ? body.car.trim() : "";
+  // Display-only name. Never matched against telemetry -- purely so a
+  // student reading the list knows what car the lap is in.
+  const carDisplay = typeof body.carDisplay === "string" ? body.carDisplay.trim() : "";
   const label = typeof body.label === "string" ? body.label.trim() : "";
   const lapTimeRaw = typeof body.lapTimeSeconds === "string" ? body.lapTimeSeconds.trim() : "";
   const lapTimeSeconds = lapTimeRaw ? Number(lapTimeRaw) : null;
@@ -80,6 +83,7 @@ coachRoutes.post("/reference-laps", async (c) => {
     ownerId: user.id,
     track,
     car,
+    carDisplay: carDisplay || null,
     label,
     data,
     lapTimeSeconds: lapTimeSeconds !== null && Number.isFinite(lapTimeSeconds) ? lapTimeSeconds : null,
