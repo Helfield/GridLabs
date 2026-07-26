@@ -2,9 +2,9 @@ import { Hono } from "hono";
 import { db } from "../db/client";
 import { users, sessions, referenceLaps } from "../db/schema";
 import { eq } from "drizzle-orm";
+import { getAvailableReferenceLaps, getReferenceLapForDownload } from "../db/queries";
 
 type ApiVariables = { apiUserId: number };
-
 export const apiRoutes = new Hono<{ Variables: ApiVariables }>();
 
 // Every route here authenticates via "Authorization: Bearer <api_token>"
@@ -12,16 +12,13 @@ export const apiRoutes = new Hono<{ Variables: ApiVariables }>();
 apiRoutes.use("*", async (c, next) => {
   const authHeader = c.req.header("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
-
   if (!token) {
     return c.json({ error: "Missing API token. Send it as: Authorization: Bearer <token>" }, 401);
   }
-
   const user = await db.query.users.findFirst({ where: eq(users.apiToken, token) });
   if (!user) {
     return c.json({ error: "Invalid API token." }, 401);
   }
-
   c.set("apiUserId", user.id);
   await next();
 });
@@ -39,11 +36,9 @@ apiRoutes.get("/me", async (c) => {
 apiRoutes.post("/sessions", async (c) => {
   const userId = c.get("apiUserId");
   const body = await c.req.json().catch(() => null);
-
   if (!body || typeof body.track !== "string" || typeof body.car !== "string") {
     return c.json({ error: "Expected JSON body with at least: track, car" }, 400);
   }
-
   const [created] = await db
     .insert(sessions)
     .values({
@@ -57,7 +52,6 @@ apiRoutes.post("/sessions", async (c) => {
       sector3Seconds: typeof body.sector3Seconds === "number" ? body.sector3Seconds : null,
     })
     .returning({ id: sessions.id });
-
   return c.json({ id: created.id }, 201);
 });
 
@@ -66,11 +60,9 @@ apiRoutes.post("/sessions", async (c) => {
 apiRoutes.post("/reference-laps", async (c) => {
   const userId = c.get("apiUserId");
   const body = await c.req.json().catch(() => null);
-
   if (!body || typeof body.track !== "string" || typeof body.car !== "string" || typeof body.label !== "string" || !body.data) {
     return c.json({ error: "Expected JSON body with at least: track, car, label, data" }, 400);
   }
-
   const [created] = await db
     .insert(referenceLaps)
     .values({
@@ -83,6 +75,34 @@ apiRoutes.post("/reference-laps", async (c) => {
       isPublic: body.isPublic === true,
     })
     .returning({ id: referenceLaps.id });
-
   return c.json({ id: created.id }, 201);
+});
+
+// List every reference lap this account can drive against -- their own
+// plus every global/public one a coach has uploaded. Lightweight: no
+// per-bin data here, just enough to show a picker (track, car, label,
+// lap time). The local app calls this on startup / when the driver
+// changes track, then calls GET /reference-laps/:id for the one they pick.
+apiRoutes.get("/reference-laps", async (c) => {
+  const userId = c.get("apiUserId");
+  const laps = await getAvailableReferenceLaps(userId);
+  return c.json(laps);
+});
+
+// Full reference lap, including the per-bin telemetry data, for the local
+// app to load once a driver has picked one from the list above. Returns
+// 404 for both "doesn't exist" and "exists but isn't yours/public" --
+// deliberately the same response for both, so this endpoint can't be used
+// to probe which lap ids exist.
+apiRoutes.get("/reference-laps/:id", async (c) => {
+  const userId = c.get("apiUserId");
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) {
+    return c.json({ error: "Invalid reference lap id." }, 400);
+  }
+  const lap = await getReferenceLapForDownload(id, userId);
+  if (!lap) {
+    return c.json({ error: "Reference lap not found." }, 404);
+  }
+  return c.json(lap);
 });

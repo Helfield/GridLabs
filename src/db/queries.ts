@@ -1,6 +1,6 @@
 import { db } from "./client";
 import { users, sessions, referenceLaps } from "./schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 
 export async function getUserById(id: number) {
   return db.query.users.findFirst({ where: eq(users.id, id) });
@@ -98,7 +98,7 @@ export async function getSessionWithTrackHistory(sessionId: number) {
 }
 
 // Create a reference lap. Used both by the local telemetry app's API
-// upload (owner-only, isPublic optional) and by the new coach-facing
+// upload (owner-only, isPublic optional) and by the coach-facing
 // "Global reference laps" page (always isPublic: true).
 export async function createReferenceLap(input: {
   ownerId: number;
@@ -117,4 +117,39 @@ export async function createReferenceLap(input: {
 // page to take a lap out of circulation for everyone.
 export async function deleteReferenceLap(id: number) {
   await db.delete(referenceLaps).where(eq(referenceLaps.id, id));
+}
+
+// Lightweight listing for the local telemetry bridge app: every lap this
+// user can drive against (their own + every global/public one), WITHOUT
+// the heavy per-bin `data` blob -- the app fetches that separately, only
+// for the one lap the student actually picks. Keeps the "which laps are
+// available" call fast even as the library of global laps grows.
+export async function getAvailableReferenceLaps(userId: number) {
+  return db.query.referenceLaps.findMany({
+    where: or(eq(referenceLaps.ownerId, userId), eq(referenceLaps.isPublic, true)),
+    orderBy: (r, { desc }) => [desc(r.createdAt)],
+    columns: {
+      id: true,
+      ownerId: true,
+      track: true,
+      car: true,
+      label: true,
+      lapTimeSeconds: true,
+      isPublic: true,
+      createdAt: true,
+      // data intentionally omitted -- see getReferenceLapForDownload
+    },
+  });
+}
+
+// Full lap (including the per-bin `data` blob) for the local app to load
+// once a student has picked a specific reference lap to drive against.
+// Access check: must be the lap's owner, or the lap must be public --
+// this is what stops one student pulling another private lap by guessing
+// an id.
+export async function getReferenceLapForDownload(id: number, userId: number) {
+  const lap = await db.query.referenceLaps.findFirst({ where: eq(referenceLaps.id, id) });
+  if (!lap) return null;
+  if (lap.ownerId !== userId && !lap.isPublic) return null;
+  return lap;
 }
