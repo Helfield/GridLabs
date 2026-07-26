@@ -86,6 +86,8 @@ authRoutes.get("/discord/callback", async (c) => {
   });
 
   if (!tokenResponse.ok) {
+    const errorBody = await tokenResponse.text();
+    console.error("Discord token exchange failed:", tokenResponse.status, errorBody);
     return c.text("Failed to authenticate with Discord. Please try again.", 502);
   }
 
