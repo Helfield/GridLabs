@@ -36,7 +36,7 @@ export function layout(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)} · Grid Labs</title>
+<title>${escapeHtml(title)} · GridLabs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap" rel="stylesheet">
@@ -59,7 +59,7 @@ function navBar(user: NavUser): string {
   <div class="nav__inner">
     <a class="mark" href="/">
       <span class="mark__bars" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span class="mark__text">Grid Labs</span>
+      <span class="mark__text">GridLabs</span>
     </a>
     <a class="btn btn--ghost btn--sm" href="/#join">Sign in</a>
   </div>
@@ -79,10 +79,11 @@ function navBar(user: NavUser): string {
     <div class="nav__left">
       <a class="mark" href="${home}">
         <span class="mark__bars" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="mark__text">Grid Labs</span>
+        <span class="mark__text">GridLabs</span>
       </a>
       <nav class="nav__links">
         <a href="${home}">${homeLabel}</a>
+        ${user.role === "coach" ? `<a href="/coach/reference-laps">Reference Laps</a>` : ""}
         <a href="/account">Account</a>
       </nav>
     </div>
@@ -100,7 +101,7 @@ function footer(): string {
   return `
 <footer class="foot">
   <div class="foot__inner">
-    <span>Grid Labs · Le Mans Ultimate coaching</span>
+    <span>GridLabs · Le Mans Ultimate coaching</span>
     <span class="foot__note">Members only</span>
   </div>
 </footer>`;

@@ -24,7 +24,6 @@ export async function getAllStudents(): Promise<StudentSummary[]> {
   const students = await db.query.users.findMany({
     where: eq(users.role, "student"),
   });
-
   const stats = await db
     .select({
       userId: sessions.userId,
@@ -34,9 +33,7 @@ export async function getAllStudents(): Promise<StudentSummary[]> {
     })
     .from(sessions)
     .groupBy(sessions.userId);
-
   const statsByUserId = new Map(stats.map((s) => [s.userId, s]));
-
   return students.map((student) => {
     const stat = statsByUserId.get(student.id);
     return {
@@ -78,10 +75,8 @@ export async function getStudentDetail(studentId: number) {
     where: and(eq(users.id, studentId), eq(users.role, "student")),
   });
   if (!student) return null;
-
   const studentSessions = await getSessionsForUser(studentId);
   const studentLaps = await getReferenceLapsForUser(studentId);
-
   return { student, sessions: studentSessions, referenceLaps: studentLaps };
 }
 
@@ -95,11 +90,31 @@ export async function getSessionWithTrackHistory(sessionId: number) {
     where: eq(sessions.id, sessionId),
   });
   if (!session) return null;
-
   const sameTrack = await db.query.sessions.findMany({
     where: and(eq(sessions.userId, session.userId), eq(sessions.track, session.track)),
     orderBy: (s, { desc }) => [desc(s.createdAt)],
   });
-
   return { session, sameTrack };
+}
+
+// Create a reference lap. Used both by the local telemetry app's API
+// upload (owner-only, isPublic optional) and by the new coach-facing
+// "Global reference laps" page (always isPublic: true).
+export async function createReferenceLap(input: {
+  ownerId: number;
+  track: string;
+  car: string;
+  label: string;
+  data: unknown;
+  lapTimeSeconds: number | null;
+  isPublic: boolean;
+}) {
+  const [created] = await db.insert(referenceLaps).values(input).returning({ id: referenceLaps.id });
+  return created;
+}
+
+// Remove a reference lap -- used by the coach's "Global reference laps"
+// page to take a lap out of circulation for everyone.
+export async function deleteReferenceLap(id: number) {
+  await db.delete(referenceLaps).where(eq(referenceLaps.id, id));
 }

@@ -7,7 +7,6 @@ type Nav = NonNullable<NavUser>;
 
 export function coachDashboardPage(navUser: Nav, students: StudentSummary[]): string {
   const bestTimes = students.map((s) => s.bestLapTimeSeconds);
-
   const rows =
     students.length === 0
       ? `<div class="empty"><strong>No drivers yet</strong>Anyone who joins the Discord and signs up appears here.</div>`
@@ -51,9 +50,7 @@ export function coachDashboardPage(navUser: Nav, students: StudentSummary[]): st
     .join("")}
   </tbody>
 </table>`;
-
   const active = students.filter((s) => s.sessionCount > 0).length;
-
   const body = `
 <div class="phead">
   <div>
@@ -62,12 +59,10 @@ export function coachDashboardPage(navUser: Nav, students: StudentSummary[]): st
     <p class="phead__sub">${students.length} signed up · ${active} with laps on the board</p>
   </div>
 </div>
-
 <section class="panel">
   <div class="panel__head"><h2>Roster</h2><span class="tag">Ranked by best lap</span></div>
   ${rows}
 </section>`;
-
   return layout("Drivers", body, navUser);
 }
 
@@ -79,7 +74,6 @@ export function driverDetailPage(
 ): string {
   const body = `
 <a class="backlink" href="/coach">← All drivers</a>
-
 <div class="phead">
   <div style="display:flex;align-items:center;gap:16px">
     ${
@@ -94,9 +88,7 @@ export function driverDetailPage(
     </div>
   </div>
 </div>
-
 ${statStrip(driverSessions, driverRefLaps.length)}
-
 <div class="grid-2 mt">
   <div class="stack">
     ${progressPanel(driverSessions)}
@@ -106,6 +98,92 @@ ${statStrip(driverSessions, driverRefLaps.length)}
     ${refLapPanel("Their reference laps", driverRefLaps, "Nothing saved yet — they need a personal best with the app running.")}
   </div>
 </div>`;
-
   return layout(driver.name, body, navUser);
+}
+
+// Coach-only page: upload a reference lap that immediately becomes
+// visible to every student ("Shared with you"), and manage/remove the
+// ones already live. No schema change needed -- these are just
+// reference_laps rows owned by the uploading coach with isPublic: true.
+export function referenceLapsPage(
+  navUser: Nav,
+  laps: Array<{
+    id: number;
+    track: string;
+    car: string;
+    label: string;
+    lapTimeSeconds: number | null;
+    createdAt: Date;
+  }>,
+): string {
+  const rows =
+    laps.length === 0
+      ? `<div class="empty"><strong>No global reference laps yet</strong>Upload one and it appears for every student instantly.</div>`
+      : `
+<div class="reflist">
+${laps
+  .map(
+    (l) => `
+  <div class="ref">
+    <div>
+      <div class="ref__label">${escapeHtml(l.label)}</div>
+      <div class="ref__meta">${escapeHtml(l.track)} · ${escapeHtml(l.car)} · ${escapeHtml(shortDate(l.createdAt))}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <span class="ref__time">${escapeHtml(lapTime(l.lapTimeSeconds))}</span>
+      <form action="/coach/reference-laps/${l.id}/delete" method="post" onsubmit="return confirm('Remove this reference lap for all students?')">
+        <button class="linkbtn" type="submit" style="color:var(--warn)">Remove</button>
+      </form>
+    </div>
+  </div>`,
+  )
+  .join("")}
+</div>`;
+
+  const body = `
+<a class="backlink" href="/coach">← All drivers</a>
+<div class="phead">
+  <div>
+    <span class="eyebrow">Coaching</span>
+    <h1>Global reference laps</h1>
+    <p class="phead__sub">Upload a lap here and every student sees it instantly under "Shared with you" — no redownloading required.</p>
+  </div>
+</div>
+<div class="grid-2">
+  <section class="panel">
+    <div class="panel__head"><h2>Upload</h2></div>
+    <div class="panel__body">
+      <form action="/coach/reference-laps" method="post" enctype="multipart/form-data">
+        <label class="field">
+          <span class="field__label">Track</span>
+          <input type="text" name="track" required placeholder="e.g. Monza Curva Grande Circuit">
+        </label>
+        <label class="field">
+          <span class="field__label">Car</span>
+          <input type="text" name="car" required placeholder="e.g. United Autosports 2025 #23:ELMS">
+        </label>
+        <label class="field">
+          <span class="field__label">Label</span>
+          <input type="text" name="label" required placeholder="e.g. Coach reference — Monza">
+        </label>
+        <label class="field">
+          <span class="field__label">Lap time (seconds, optional)</span>
+          <input type="number" step="0.001" name="lapTimeSeconds" placeholder="e.g. 105.460">
+        </label>
+        <label class="field">
+          <span class="field__label">Reference lap file (.json)</span>
+          <input type="file" name="dataFile" accept="application/json" required>
+        </label>
+        <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Upload &amp; publish to everyone</button>
+      </form>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel__head"><h2>Live now</h2><span class="tag">${laps.length} global</span></div>
+    <div class="panel__body">
+      ${rows}
+    </div>
+  </section>
+</div>`;
+  return layout("Global reference laps", body, navUser);
 }
