@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppVariables } from "../index";
 import { requireAuth } from "./auth";
-import { getUserById, getSessionWithTrackHistory } from "../db/queries";
+import { getUserById, getSessionWithTrackHistory, getReferenceForComparison } from "../db/queries";
 import { sessionDetailPage } from "../views/session-pages";
 
 export const sessionRoutes = new Hono<{ Variables: AppVariables }>();
@@ -27,5 +27,11 @@ sessionRoutes.get("/:id", async (c) => {
   const backHref = isOwner ? "/student" : `/coach/driver/${result.session.userId}`;
   const backLabel = isOwner ? "My driving" : "Back to driver";
 
-  return c.html(sessionDetailPage(user, result.session, result.sameTrack, backHref, backLabel));
+  // The lap to compare against on the traces. Null is fine -- the page
+  // just draws the driver's own lap on its own.
+  const reference = await getReferenceForComparison(result.session.track, result.session.car);
+
+  return c.html(
+    sessionDetailPage(user, result.session, result.sameTrack, backHref, backLabel, reference),
+  );
 });

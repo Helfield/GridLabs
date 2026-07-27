@@ -351,3 +351,25 @@ export async function getTrackProgress(userId: number): Promise<TrackProgress[]>
     return b.gapSeconds - a.gapSeconds;
   });
 }
+
+/**
+ * The reference lap a given session should be measured against: the
+ * fastest published lap for the same track and class that actually
+ * carries telemetry.
+ *
+ * Telemetry is the requirement, not just a time -- a reference with no
+ * samples can't be drawn on a trace, so a slower lap that has them is
+ * more useful here than a quicker one that doesn't.
+ */
+export async function getReferenceForComparison(track: string, car: string) {
+  const candidates = await db.query.referenceLaps.findMany({
+    where: and(eq(referenceLaps.isPublic, true), eq(referenceLaps.track, track)),
+    columns: { id: true, label: true, car: true, carDisplay: true, lapTimeSeconds: true, data: true },
+  });
+
+  const eligible = candidates
+    .filter((r) => sameClass(r.car, car) && r.data)
+    .sort((a, b) => (a.lapTimeSeconds ?? Infinity) - (b.lapTimeSeconds ?? Infinity));
+
+  return eligible[0] ?? null;
+}

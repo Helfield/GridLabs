@@ -81,12 +81,21 @@ function pct(n: number): string {
  * what's useful is how it sits against the rest of your laps at the same
  * track, and what you were actually doing with the controls.
  */
+type ReferenceRow = {
+  label: string;
+  car: string;
+  carDisplay: string | null;
+  lapTimeSeconds: number | null;
+  data: unknown;
+} | null;
+
 export function sessionDetailPage(
   navUser: Nav,
   session: SessionRow,
   sameTrackSessions: SessionRow[],
   backHref: string,
   backLabel: string,
+  reference: ReferenceRow = null,
 ): string {
   const trackTimes = sameTrackSessions.map((s) => s.lapTimeSeconds).filter((t): t is number => t !== null);
   const trackBest = trackTimes.length ? Math.min(...trackTimes) : null;
@@ -177,7 +186,7 @@ export function sessionDetailPage(
 
 <div class="mt">${sectorBlock}</div>
 
-${telemetrySection(session)}
+${telemetrySection(session, reference)}
 
 <section class="panel mt">
   <div class="panel__head">
@@ -202,8 +211,10 @@ ${telemetrySection(session)}
  * whole value of the page. Reading "you were at 40% throttle" means
  * nothing until you can see where.
  */
-function telemetrySection(session: SessionRow): string {
+function telemetrySection(session: SessionRow, reference: ReferenceRow): string {
   const points = readSamples(session.data);
+  const refPoints = reference ? readSamples(reference.data) : [];
+  const hasRef = refPoints.length >= 10;
 
   if (points.length < 10) {
     return `
@@ -268,27 +279,50 @@ function telemetrySection(session: SessionRow): string {
     .join("");
 
   // --- traces share one x axis: distance along the lap ---
+  //
+  // Both laps are binned every 5m from the start line, so the same
+  // distance is the same point on track for either of them. That's what
+  // makes overlaying honest: the comparison is position-for-position,
+  // not time-for-time, which would drift apart as soon as one driver
+  // got ahead.
   const TR_W = 1000, TR_H = 150;
   const lastDistance = points[points.length - 1].distance || 1;
   const tx = (d: number) => (d / lastDistance) * TR_W;
 
-  const speedPath = points
-    .map((p, i) => {
-      const y = TR_H - ((p.speed - minSpeed) / (maxSpeed - minSpeed || 1)) * (TR_H - 10) - 5;
-      return `${i === 0 ? "M" : "L"}${tx(p.distance).toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
+  const refSpeeds = refPoints.map((p) => p.speed);
+  const speedFloor = Math.min(minSpeed, ...(hasRef ? refSpeeds : [minSpeed]));
+  const speedCeil = Math.max(maxSpeed, ...(hasRef ? refSpeeds : [maxSpeed]));
 
-  const pedalPath = (get: (p: Point) => number) =>
-    points
+  function pathFor(source: Point[], value: (p: Point) => number, lo: number, hi: number): string {
+    return source
       .map((p, i) => {
-        const y = TR_H - Math.max(0, Math.min(1, get(p))) * (TR_H - 10) - 5;
+        const norm = (value(p) - lo) / (hi - lo || 1);
+        const y = TR_H - Math.max(0, Math.min(1, norm)) * (TR_H - 10) - 5;
         return `${i === 0 ? "M" : "L"}${tx(p.distance).toFixed(1)} ${y.toFixed(1)}`;
       })
       .join(" ");
+  }
 
-  const brakePath = pedalPath((p) => p.brake);
-  const throttlePath = hasThrottle ? pedalPath((p) => p.throttle ?? 0) : null;
+  const speedPath = pathFor(points, (p) => p.speed, speedFloor, speedCeil);
+  const brakePath = pathFor(points, (p) => p.brake, 0, 1);
+  const throttlePath = hasThrottle ? pathFor(points, (p) => p.throttle ?? 0, 0, 1) : null;
+
+  const refSpeedPath = hasRef ? pathFor(refPoints, (p) => p.speed, speedFloor, speedCeil) : null;
+  const refBrakePath = hasRef ? pathFor(refPoints, (p) => p.brake, 0, 1) : null;
+  const refHasThrottle = refPoints.some((p) => p.throttle !== null);
+  const refThrottlePath = hasRef && refHasThrottle ? pathFor(refPoints, (p) => p.throttle ?? 0, 0, 1) : null;
+
+  // Reference sits underneath in every trace, so the driver's own line
+  // is never hidden by it -- theirs is the one being read.
+  const trace = (label: string, yours: string | null, yoursColour: string, ref: string | null) => `
+        <div class="trace">
+          <span class="trace__label">${label}</span>
+          <svg viewBox="0 0 ${TR_W} ${TR_H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            ${ref ? `<path d="${ref}" fill="none" stroke="var(--fastest)" stroke-width="2" opacity=".75" vector-effect="non-scaling-stroke"/>` : ""}
+            ${yours ? `<path d="${yours}" fill="none" stroke="${yoursColour}" stroke-width="2.5" vector-effect="non-scaling-stroke"/>` : ""}
+            <line class="tel-cursor" y1="0" y2="${TR_H}" stroke="var(--text)" stroke-width="1" opacity=".55" style="display:none"/>
+          </svg>
+        </div>`;
 
   // --- corner table ---
   const apexes = findApexes(points);
@@ -321,7 +355,7 @@ function telemetrySection(session: SessionRow): string {
 <section class="panel mt">
   <div class="panel__head">
     <h2>Telemetry</h2>
-    <span class="tag">Hover the traces or click the map</span>
+    <span class="tag">${hasRef && reference ? `vs ${escapeHtml(reference.label)} ${escapeHtml(lapTime(reference.lapTimeSeconds))}` : "Hover the traces or click the map"}</span>
   </div>
 
   <div class="panel__body">
@@ -366,28 +400,21 @@ function telemetrySection(session: SessionRow): string {
           <span><b id="ro-d">&mdash;</b> m</span>
           <span><b id="ro-s">&mdash;</b> kph</span>
           <span>gear <b id="ro-g">&mdash;</b></span>
-          <span class="t-pb">thr <b id="ro-t">&mdash;</b>%</span>
-          <span style="color:#ff3b3b">brk <b id="ro-b">&mdash;</b>%</span>
+          <span>thr <b id="ro-t">&mdash;</b>%</span>
+          <span>brk <b id="ro-b">&mdash;</b>%</span>
         </div>
 
-        <div class="trace">
-          <span class="trace__label">Speed</span>
-          <svg viewBox="0 0 ${TR_W} ${TR_H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="${speedPath}" fill="none" stroke="var(--fastest)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-            <line class="tel-cursor" y1="0" y2="${TR_H}" stroke="var(--text)" stroke-width="1" opacity=".55" style="display:none"/>
-          </svg>
-        </div>
+        ${trace("Speed", speedPath, "var(--pb)", refSpeedPath)}
+        ${trace("Brake", brakePath, "#ff3b3b", refBrakePath)}
+        ${throttlePath ? trace("Throttle", throttlePath, "#ff3b3b", refThrottlePath) : ""}
 
-        <div class="trace">
-          <span class="trace__label">Throttle / brake</span>
-          <svg viewBox="0 0 ${TR_W} ${TR_H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-            ${throttlePath ? `<path d="${throttlePath}" fill="none" stroke="var(--pb)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>` : ""}
-            <path d="${brakePath}" fill="none" stroke="#ff3b3b" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-            <line class="tel-cursor" y1="0" y2="${TR_H}" stroke="var(--text)" stroke-width="1" opacity=".55" style="display:none"/>
-          </svg>
+        <div class="legend" style="margin-top:2px">
+          <span><i style="background:var(--pb)"></i>Your speed</span>
+          <span><i style="background:#ff3b3b"></i>Your pedals</span>
+          ${hasRef ? `<span><i style="background:var(--fastest)"></i>Reference</span>` : ""}
         </div>
         ${hasThrottle ? "" : `<p class="hint">This lap has no throttle trace -- it was driven before the app recorded it.</p>`}
-      </div>
+        ${hasRef ? "" : `<p class="hint">Nothing published for this track and class yet, so there's no reference to compare against.</p>`}
     </div>
   </div>
 
@@ -419,7 +446,7 @@ function telemetrySection(session: SessionRow): string {
   display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.13em;
   text-transform:uppercase;color:var(--dim);margin-bottom:5px;
 }
-.trace svg{width:100%;height:120px;display:block;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm);cursor:crosshair}
+.trace svg{width:100%;height:155px;display:block;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm);cursor:crosshair}
 @media (max-width:900px){.telemetry{grid-template-columns:1fr}}
 </style>
 
