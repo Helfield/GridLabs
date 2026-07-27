@@ -7,6 +7,7 @@ import { apiRoutes } from "./routes/api";
 import { getUserById } from "./db/queries";
 import { landingPage } from "./views/landing";
 import { sessionRoutes } from "./routes/session";
+import { libraryRoutes } from "./routes/library";
 
 export type AppVariables = { userId: number };
 
@@ -20,6 +21,7 @@ app.route("/student", studentRoutes);
 app.route("/account", accountRoutes);
 app.route("/api", apiRoutes);
 app.route("/session", sessionRoutes);
+app.route("/library", libraryRoutes);
 
 app.get("/", (c) => {
   return c.html(landingPage(DISCORD_INVITE_URL));

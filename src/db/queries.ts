@@ -1,6 +1,6 @@
 import { db } from "./client";
 import { users, sessions, referenceLaps } from "./schema";
-import { eq, and, or, sql } from "drizzle-orm";
+import { eq, and, or, inArray, sql } from "drizzle-orm";
 
 export async function getUserById(id: number) {
   return db.query.users.findFirst({ where: eq(users.id, id) });
@@ -158,4 +158,69 @@ export async function getReferenceLapForDownload(id: number, userId: number) {
   if (!lap) return null;
   if (lap.ownerId !== userId && !lap.isPublic) return null;
   return lap;
+}
+
+// ---------------------------------------------------------------- library
+
+// One row per track that has at least one published lap, for the track
+// grid. Two queries rather than one: the listing needs no telemetry, and
+// pulling every lap's full sample blob just to count them would move
+// megabytes to render a page of thumbnails. The second query fetches
+// data for only the representative lap per track that draws the layout.
+export async function getTrackSummaries() {
+  const laps = await db.query.referenceLaps.findMany({
+    where: eq(referenceLaps.isPublic, true),
+    orderBy: (r, { asc }) => [asc(r.lapTimeSeconds)],
+    columns: { id: true, track: true, lapTimeSeconds: true },
+  });
+
+  const byTrack = new Map<string, { lapCount: number; bestLapTimeSeconds: number | null; sampleId: number }>();
+  for (const lap of laps) {
+    const existing = byTrack.get(lap.track);
+    if (existing) {
+      existing.lapCount += 1;
+      if (existing.bestLapTimeSeconds === null || (lap.lapTimeSeconds !== null && lap.lapTimeSeconds < existing.bestLapTimeSeconds)) {
+        existing.bestLapTimeSeconds = lap.lapTimeSeconds;
+      }
+    } else {
+      byTrack.set(lap.track, { lapCount: 1, bestLapTimeSeconds: lap.lapTimeSeconds, sampleId: lap.id });
+    }
+  }
+  if (byTrack.size === 0) return [];
+
+  const sampleIds = [...byTrack.values()].map((v) => v.sampleId);
+  const samples = await db.query.referenceLaps.findMany({
+    where: inArray(referenceLaps.id, sampleIds),
+    columns: { id: true, data: true },
+  });
+  const dataById = new Map(samples.map((s) => [s.id, s.data]));
+
+  return [...byTrack.entries()]
+    .map(([track, v]) => ({
+      track,
+      lapCount: v.lapCount,
+      bestLapTimeSeconds: v.bestLapTimeSeconds,
+      sampleData: dataById.get(v.sampleId) ?? null,
+    }))
+    .sort((a, b) => a.track.localeCompare(b.track));
+}
+
+// Every published lap for one track, plus one lap's data to draw the
+// layout from.
+export async function getPublicLapsForTrack(track: string) {
+  const laps = await db.query.referenceLaps.findMany({
+    where: and(eq(referenceLaps.isPublic, true), eq(referenceLaps.track, track)),
+    orderBy: (r, { asc }) => [asc(r.lapTimeSeconds)],
+    columns: {
+      id: true, track: true, car: true, carDisplay: true,
+      label: true, lapTimeSeconds: true, createdAt: true,
+    },
+  });
+  if (laps.length === 0) return { laps, sampleData: null };
+
+  const sample = await db.query.referenceLaps.findFirst({
+    where: eq(referenceLaps.id, laps[0].id),
+    columns: { data: true },
+  });
+  return { laps, sampleData: sample?.data ?? null };
 }
