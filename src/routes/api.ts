@@ -50,6 +50,9 @@ apiRoutes.post("/sessions", async (c) => {
       sector1Seconds: typeof body.sector1Seconds === "number" ? body.sector1Seconds : null,
       sector2Seconds: typeof body.sector2Seconds === "number" ? body.sector2Seconds : null,
       sector3Seconds: typeof body.sector3Seconds === "number" ? body.sector3Seconds : null,
+      // Optional -- older builds of the desktop app don't send it, and a
+      // lap summary is still worth storing without the telemetry.
+      data: body.data ?? null,
     })
     .returning({ id: sessions.id });
   return c.json({ id: created.id }, 201);

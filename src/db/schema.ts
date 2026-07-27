@@ -59,5 +59,10 @@ export const sessions = pgTable("sessions", {
   sector1Seconds: real("sector_1_seconds"),
   sector2Seconds: real("sector_2_seconds"),
   sector3Seconds: real("sector_3_seconds"),
+  // The lap's full per-bin telemetry, same shape as a reference lap's.
+  // Nullable: laps logged before this existed have none, and the detail
+  // page has to cope with that rather than assume every lap is
+  // analysable.
+  data: jsonb("data"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
