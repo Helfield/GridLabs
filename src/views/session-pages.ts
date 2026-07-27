@@ -199,7 +199,7 @@ ${telemetrySection(session, reference)}
   </div>
 </section>`;
 
-  return layout(`${session.track} - ${lapTime(session.lapTimeSeconds)}`, body, navUser);
+  return layout(`${session.track} - ${lapTime(session.lapTimeSeconds)}`, body, navUser, { wide: true });
 }
 
 /**
@@ -312,14 +312,40 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
   const refHasThrottle = refPoints.some((p) => p.throttle !== null);
   const refThrottlePath = hasRef && refHasThrottle ? pathFor(refPoints, (p) => p.throttle ?? 0, 0, 1) : null;
 
+  // Pedals are near enough binary -- on or off -- so a bare line
+  // reduces each application to a couple of vertical pixels. Filling
+  // underneath turns them into blocks you can actually see the shape of.
+  function areaFor(source: Point[], value: (p: Point) => number): string {
+    if (!source.length) return "";
+    const top = source
+      .map((p, i) => {
+        const y = TR_H - Math.max(0, Math.min(1, value(p))) * (TR_H - 10) - 5;
+        return `${i === 0 ? "M" : "L"}${tx(p.distance).toFixed(1)} ${y.toFixed(1)}`;
+      })
+      .join(" ");
+    const first = tx(source[0].distance).toFixed(1);
+    const last = tx(source[source.length - 1].distance).toFixed(1);
+    return `${top} L${last} ${TR_H} L${first} ${TR_H} Z`;
+  }
+
+  const brakeArea = areaFor(points, (p) => p.brake);
+  const throttleArea = hasThrottle ? areaFor(points, (p) => p.throttle ?? 0) : "";
+
   // Reference sits underneath in every trace, so the driver's own line
   // is never hidden by it -- theirs is the one being read.
-  const trace = (label: string, yours: string | null, yoursColour: string, ref: string | null) => `
+  const trace = (
+    label: string,
+    yours: string | null,
+    yoursColour: string,
+    ref: string | null,
+    area: string = "",
+  ) => `
         <div class="trace">
           <span class="trace__label">${label}</span>
           <svg viewBox="0 0 ${TR_W} ${TR_H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-            ${ref ? `<path d="${ref}" fill="none" stroke="var(--fastest)" stroke-width="2" opacity=".75" vector-effect="non-scaling-stroke"/>` : ""}
-            ${yours ? `<path d="${yours}" fill="none" stroke="${yoursColour}" stroke-width="2.5" vector-effect="non-scaling-stroke"/>` : ""}
+            ${area ? `<path d="${area}" fill="${yoursColour}" opacity=".16" stroke="none"/>` : ""}
+            ${ref ? `<path d="${ref}" fill="none" stroke="var(--fastest)" stroke-width="2" opacity=".8" vector-effect="non-scaling-stroke"/>` : ""}
+            ${yours ? `<path d="${yours}" fill="none" stroke="${yoursColour}" stroke-width="2" vector-effect="non-scaling-stroke"/>` : ""}
             <line class="tel-cursor" y1="0" y2="${TR_H}" stroke="var(--text)" stroke-width="1" opacity=".55" style="display:none"/>
           </svg>
         </div>`;
@@ -402,11 +428,15 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
           <span>gear <b id="ro-g">&mdash;</b></span>
           <span>thr <b id="ro-t">&mdash;</b>%</span>
           <span>brk <b id="ro-b">&mdash;</b>%</span>
+          <span style="margin-left:auto">
+            <button type="button" class="linkbtn" id="tel-reset">Reset zoom</button>
+          </span>
         </div>
+        <p class="hint" style="margin:0 0 10px">Scroll to zoom into a section, drag to move along the lap.</p>
 
         ${trace("Speed", speedPath, "var(--pb)", refSpeedPath)}
-        ${trace("Brake", brakePath, "#ff3b3b", refBrakePath)}
-        ${throttlePath ? trace("Throttle", throttlePath, "#ff3b3b", refThrottlePath) : ""}
+        ${trace("Brake", brakePath, "#ff3b3b", refBrakePath, brakeArea)}
+        ${throttlePath ? trace("Throttle", throttlePath, "#ff3b3b", refThrottlePath, throttleArea) : ""}
 
         <div class="legend" style="margin-top:2px">
           <span><i style="background:var(--pb)"></i>Your speed</span>
@@ -433,7 +463,7 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
 </section>
 
 <style>
-.telemetry{display:grid;grid-template-columns:460px 1fr;gap:22px;align-items:start}
+.telemetry{display:grid;grid-template-columns:360px 1fr;gap:22px;align-items:start}
 .telemetry__map svg{width:100%;height:auto;display:block;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm)}
 .telemetry__traces{min-width:0}
 .telemetry__readout{
@@ -446,7 +476,7 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
   display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.13em;
   text-transform:uppercase;color:var(--dim);margin-bottom:5px;
 }
-.trace svg{width:100%;height:155px;display:block;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm);cursor:crosshair}
+.trace svg{width:100%;height:160px;display:block;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm);cursor:crosshair;touch-action:none}
 @media (max-width:900px){.telemetry{grid-template-columns:1fr}}
 </style>
 
@@ -454,38 +484,93 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
 (function(){
   var data = ${JSON.stringify(cursorData)};
   if (!data.length) return;
+
+  var W = ${TR_W}, H = ${TR_H};
   var marker = document.getElementById('tel-marker');
   var cursors = document.querySelectorAll('.tel-cursor');
-  var out = { d:'ro-d', s:'ro-s', g:'ro-g', t:'ro-t', b:'ro-b' };
+  var traces = document.querySelectorAll('.trace svg');
+
+  // A lap is over a thousand samples wide; at full zoom a braking zone
+  // is a couple of pixels. Zooming is done by moving the SVG viewBox
+  // rather than redrawing paths, so it stays smooth however long the
+  // lap is, and all three traces share one view so they stay aligned.
+  var view = { x0: 0, w: W };
+
+  function applyView(){
+    for (var i = 0; i < traces.length; i++){
+      traces[i].setAttribute('viewBox', view.x0 + ' 0 ' + view.w + ' ' + H);
+    }
+  }
 
   function show(i){
     var p = data[i];
     if (!p) return;
-    document.getElementById(out.d).textContent = p.d;
-    document.getElementById(out.s).textContent = p.s;
-    document.getElementById(out.g).textContent = p.g === 0 ? 'N' : (p.g < 0 ? 'R' : p.g);
-    document.getElementById(out.t).textContent = p.t === null ? '--' : p.t;
-    document.getElementById(out.b).textContent = p.b;
+    document.getElementById('ro-d').textContent = p.d;
+    document.getElementById('ro-s').textContent = p.s;
+    document.getElementById('ro-g').textContent = p.g === 0 ? 'N' : (p.g < 0 ? 'R' : p.g);
+    document.getElementById('ro-t').textContent = p.t === null ? '--' : p.t;
+    document.getElementById('ro-b').textContent = p.b;
     if (p.x !== null && marker){
       marker.setAttribute('cx', p.x);
       marker.setAttribute('cy', p.y);
       marker.style.display = '';
     }
-    var frac = i / (data.length - 1);
+    var x = (i / (data.length - 1)) * W;
     for (var c = 0; c < cursors.length; c++){
-      var x = frac * 1000;
       cursors[c].setAttribute('x1', x);
       cursors[c].setAttribute('x2', x);
       cursors[c].style.display = '';
     }
   }
 
-  document.querySelectorAll('.trace svg').forEach(function(svg){
-    svg.addEventListener('mousemove', function(e){
-      var rect = svg.getBoundingClientRect();
-      var frac = (e.clientX - rect.left) / rect.width;
-      show(Math.max(0, Math.min(data.length - 1, Math.round(frac * (data.length - 1)))));
-    });
+  function indexAt(svg, clientX){
+    var rect = svg.getBoundingClientRect();
+    var frac = (clientX - rect.left) / rect.width;
+    var chartX = view.x0 + frac * view.w;      // account for the zoom
+    var idx = Math.round((chartX / W) * (data.length - 1));
+    return Math.max(0, Math.min(data.length - 1, idx));
+  }
+
+  var dragging = false, dragFrom = 0, moved = false;
+
+  for (var t = 0; t < traces.length; t++){
+    (function(svg){
+      svg.addEventListener('wheel', function(e){
+        e.preventDefault();
+        var rect = svg.getBoundingClientRect();
+        var frac = (e.clientX - rect.left) / rect.width;
+        var anchor = view.x0 + frac * view.w;   // keep the point under the cursor still
+        var next = view.w * (e.deltaY < 0 ? 0.8 : 1.25);
+        next = Math.max(30, Math.min(W, next));
+        view.x0 = Math.max(0, Math.min(W - next, anchor - frac * next));
+        view.w = next;
+        applyView();
+      }, { passive: false });
+
+      svg.addEventListener('mousedown', function(e){
+        dragging = true; moved = false; dragFrom = e.clientX;
+      });
+
+      svg.addEventListener('mousemove', function(e){
+        if (dragging){
+          var rect = svg.getBoundingClientRect();
+          var dx = (e.clientX - dragFrom) / rect.width * view.w;
+          if (Math.abs(dx) > 0.5) moved = true;
+          view.x0 = Math.max(0, Math.min(W - view.w, view.x0 - dx));
+          dragFrom = e.clientX;
+          applyView();
+        } else {
+          show(indexAt(svg, e.clientX));
+        }
+      });
+    })(traces[t]);
+  }
+
+  window.addEventListener('mouseup', function(){ dragging = false; });
+
+  var reset = document.getElementById('tel-reset');
+  if (reset) reset.addEventListener('click', function(){
+    view.x0 = 0; view.w = W; applyView();
   });
 
   // Clicking the map picks the nearest recorded point to the click,
@@ -511,9 +596,19 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
 
   document.querySelectorAll('tr[data-index]').forEach(function(row){
     row.style.cursor = 'pointer';
-    row.addEventListener('click', function(){ show(Number(row.getAttribute('data-index'))); });
+    row.addEventListener('click', function(){
+      var i = Number(row.getAttribute('data-index'));
+      // Zoom to the corner rather than just moving the cursor -- the
+      // reason to click a corner is to look at it closely.
+      var centre = (i / (data.length - 1)) * W;
+      view.w = Math.max(30, W / 8);
+      view.x0 = Math.max(0, Math.min(W - view.w, centre - view.w / 2));
+      applyView();
+      show(i);
+    });
   });
 
+  applyView();
   show(0);
 })();
 </script>`;
