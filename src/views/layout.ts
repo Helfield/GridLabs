@@ -84,6 +84,7 @@ function navBar(user: NavUser): string {
       <nav class="nav__links">
         <a href="${home}">${homeLabel}</a>
         <a href="/library">Reference Laps</a>
+        <a href="/download">Download</a>
         ${user.role === "coach" ? `<a href="/coach/reference-laps">Upload</a>` : ""}
         <a href="/account">Account</a>
       </nav>

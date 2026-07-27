@@ -8,6 +8,7 @@ import { getUserById } from "./db/queries";
 import { landingPage } from "./views/landing";
 import { sessionRoutes } from "./routes/session";
 import { libraryRoutes } from "./routes/library";
+import { downloadRoutes } from "./routes/download";
 
 export type AppVariables = { userId: number };
 
@@ -22,6 +23,7 @@ app.route("/account", accountRoutes);
 app.route("/api", apiRoutes);
 app.route("/session", sessionRoutes);
 app.route("/library", libraryRoutes);
+app.route("/download", downloadRoutes);
 
 app.get("/", (c) => {
   return c.html(landingPage(DISCORD_INVITE_URL));
