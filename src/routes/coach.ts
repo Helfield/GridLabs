@@ -63,8 +63,7 @@ coachRoutes.post("/reference-laps", async (c) => {
   // student reading the list knows what car the lap is in.
   const carDisplay = typeof body.carDisplay === "string" ? body.carDisplay.trim() : "";
   const label = typeof body.label === "string" ? body.label.trim() : "";
-  const lapTimeRaw = typeof body.lapTimeSeconds === "string" ? body.lapTimeSeconds.trim() : "";
-  const lapTimeSeconds = lapTimeRaw ? Number(lapTimeRaw) : null;
+  const lapTimeSeconds = parseLapTime(typeof body.lapTime === "string" ? body.lapTime : "");
   const file = body.dataFile;
 
   if (!track || !car || !label || !(file instanceof File)) {
@@ -86,7 +85,7 @@ coachRoutes.post("/reference-laps", async (c) => {
     carDisplay: carDisplay || null,
     label,
     data,
-    lapTimeSeconds: lapTimeSeconds !== null && Number.isFinite(lapTimeSeconds) ? lapTimeSeconds : null,
+    lapTimeSeconds,
     isPublic: true,
   });
 
@@ -100,3 +99,32 @@ coachRoutes.post("/reference-laps/:id/delete", async (c) => {
   }
   return c.redirect("/coach/reference-laps");
 });
+
+/**
+ * Lap time as a driver would type it -- "2:03.373" -- into seconds.
+ *
+ * Nobody reads a lap in raw seconds, so the form asks for the timing-screen
+ * format. The millisecond separator is deliberately loose: "." is correct,
+ * but ":" and "," are both common enough (and "2:03:373" is what a lot of
+ * people type) that rejecting them would just be pedantry. A plain number
+ * still works too, so anyone already used to entering seconds isn't broken.
+ *
+ * Returns null for empty or unparseable input rather than 0 -- a lap with
+ * no time recorded is a real state, and a lap time of zero is not.
+ */
+function parseLapTime(raw: string): number | null {
+  const text = raw.trim();
+  if (!text) return null;
+
+  const match = text.match(/^(\d+):([0-5]?\d)(?:[.,:](\d{1,3}))?$/);
+  if (match) {
+    const minutes = Number(match[1]);
+    const seconds = Number(match[2]);
+    // "2:03.4" means 400ms, not 4ms -- pad right, not left.
+    const millis = match[3] ? Number(match[3].padEnd(3, "0")) / 1000 : 0;
+    return minutes * 60 + seconds + millis;
+  }
+
+  const plain = Number(text.replace(",", "."));
+  return Number.isFinite(plain) && plain > 0 ? plain : null;
+}

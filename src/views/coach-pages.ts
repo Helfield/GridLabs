@@ -173,14 +173,14 @@ ${laps
           <input type="text" name="label" required placeholder="e.g. Coach reference — Monza">
         </label>
         <label class="field">
-          <span class="field__label">Lap time (seconds, optional)</span>
-          <input type="number" step="0.001" name="lapTimeSeconds" placeholder="e.g. 105.460">
+          <span class="field__label">Lap time (optional)</span>
+          <input type="text" name="lapTime" placeholder="e.g. 2:03.373" autocomplete="off">
         </label>
         <label class="field">
           <span class="field__label">Reference lap file (.json)</span>
           <input type="file" name="dataFile" accept="application/json" required>
         </label>
-        <p class="hint">Track and car must match the sim's own wording character-for-character — that's what the app matches on when it decides which laps apply to what you're driving. The display name is cosmetic and matches nothing.</p>
+        <p class="hint">Lap time as you'd read it on a timing screen — 2:03.373. Leave it blank if the lap file already carries its own time. Track and car must match the sim's own wording character-for-character — that's what the app matches on when it decides which laps apply to what you're driving. The display name is cosmetic and matches nothing.</p>
         <button class="btn btn--discord" style="background:var(--fastest);margin-top:6px" type="submit">Upload &amp; publish to everyone</button>
       </form>
     </div>
