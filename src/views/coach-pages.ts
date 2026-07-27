@@ -1,7 +1,7 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime, shortDate, timingClass } from "./components";
-import { statStrip, progressPanel, sessionTowerPanel, refLapPanel } from "./student-pages";
-import type { StudentSummary } from "../db/queries";
+import { statStrip, trackProgressPanel, sessionTowerPanel, refLapPanel } from "./student-pages";
+import type { StudentSummary, TrackProgress } from "../db/queries";
 
 type Nav = NonNullable<NavUser>;
 
@@ -71,6 +71,7 @@ export function driverDetailPage(
   driver: { name: string; email: string; discordUsername: string; discordAvatarUrl: string | null },
   driverSessions: Parameters<typeof sessionTowerPanel>[0],
   driverRefLaps: Parameters<typeof refLapPanel>[1],
+  progress: TrackProgress[] = [],
 ): string {
   const body = `
 <a class="backlink" href="/coach">← All drivers</a>
@@ -88,10 +89,10 @@ export function driverDetailPage(
     </div>
   </div>
 </div>
-${statStrip(driverSessions, driverRefLaps.length)}
+${statStrip(driverSessions, driverRefLaps.length, progress)}
 <div class="grid-2 mt">
   <div class="stack">
-    ${progressPanel(driverSessions)}
+    ${trackProgressPanel(progress)}
     ${sessionTowerPanel(driverSessions, null)}
   </div>
   <div class="stack">

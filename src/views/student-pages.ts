@@ -1,5 +1,6 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime, sectorTime, shortDate, timingClass, timingLegend, lapTimeChart } from "./components";
+import type { TrackProgress } from "../db/queries";
 
 type SessionRow = {
   id: number;
@@ -27,6 +28,7 @@ export function studentDashboardPage(
   studentSessions: SessionRow[],
   referenceLapsOwned: RefLapRow[],
   publicLaps: RefLapRow[],
+  progress: TrackProgress[] = [],
 ): string {
   const body = `
 <div class="phead">
@@ -37,11 +39,11 @@ export function studentDashboardPage(
   </div>
 </div>
 
-${statStrip(studentSessions, referenceLapsOwned.length)}
+${statStrip(studentSessions, referenceLapsOwned.length, progress)}
 
 <div class="grid-2 mt">
   <div class="stack">
-    ${progressPanel(studentSessions)}
+    ${trackProgressPanel(progress)}
     ${sessionTowerPanel(studentSessions, "/session")}
   </div>
   <div class="stack">
@@ -55,10 +57,39 @@ ${statStrip(studentSessions, referenceLapsOwned.length)}
 
 /* ---------- shared panels, also used by the coach's driver view ---------- */
 
-export function statStrip(rows: SessionRow[], refLapCount: number): string {
-  const times = rows.map((r) => r.lapTimeSeconds).filter((t): t is number => t !== null);
-  const best = times.length ? Math.min(...times) : null;
+/**
+ * `progress` is optional so the coach's driver view can keep calling
+ * this with two arguments. Given it, the middle tile shows the closest
+ * this driver has got to a published reference; without it, a plain
+ * count of tracks.
+ *
+ * What it deliberately no longer shows is an overall "fastest lap".
+ * Across different circuits that number is meaningless -- a short track
+ * always wins it, which says nothing about how well anyone drove.
+ */
+export function statStrip(rows: SessionRow[], refLapCount: number, progress: TrackProgress[] = []): string {
   const tracks = new Set(rows.map((r) => r.track));
+
+  const gaps = progress
+    .map((p) => p.gapSeconds)
+    .filter((g): g is number => g !== null);
+  const bestGap = gaps.length ? Math.min(...gaps) : null;
+  const bestGapRow = bestGap !== null ? progress.find((p) => p.gapSeconds === bestGap) : null;
+
+  const middle =
+    bestGap !== null
+      ? `
+  <div class="stat">
+    <div class="stat__k">Closest to reference</div>
+    <div class="stat__v ${bestGap <= 0 ? "t-pb" : "t-fastest"}">${escapeHtml(gapText(bestGap))}</div>
+    <div class="stat__sub">${bestGapRow ? escapeHtml(bestGapRow.track) : ""}</div>
+  </div>`
+      : `
+  <div class="stat">
+    <div class="stat__k">Tracks driven</div>
+    <div class="stat__v">${tracks.size}</div>
+    <div class="stat__sub">${progress.length ? "No reference to compare against yet" : "Drive a lap to get started"}</div>
+  </div>`;
 
   return `
 <div class="stats">
@@ -67,11 +98,7 @@ export function statStrip(rows: SessionRow[], refLapCount: number): string {
     <div class="stat__v">${rows.length}</div>
     <div class="stat__sub">${tracks.size} ${tracks.size === 1 ? "track" : "tracks"}</div>
   </div>
-  <div class="stat">
-    <div class="stat__k">Fastest lap</div>
-    <div class="stat__v t-fastest">${escapeHtml(lapTime(best))}</div>
-    <div class="stat__sub">${best !== null ? escapeHtml(bestTrackFor(rows, best)) : "No timed laps yet"}</div>
-  </div>
+  ${middle}
   <div class="stat">
     <div class="stat__k">Reference laps</div>
     <div class="stat__v">${refLapCount}</div>
@@ -80,9 +107,70 @@ export function statStrip(rows: SessionRow[], refLapCount: number): string {
 </div>`;
 }
 
-function bestTrackFor(rows: SessionRow[], best: number): string {
-  const row = rows.find((r) => r.lapTimeSeconds === best);
-  return row ? row.track : "—";
+function gapText(gap: number): string {
+  const sign = gap > 0 ? "+" : gap < 0 ? "-" : "";
+  return `${sign}${Math.abs(gap).toFixed(3)}`;
+}
+
+/**
+ * One row per track and class, sorted by the gap to the published
+ * reference -- biggest first, so the combination with most time to find
+ * is the one at the top of the list.
+ *
+ * This replaced a lap-time-over-sessions chart. With a handful of laps
+ * driven on the same afternoon that chart was mostly noise, and it
+ * couldn't answer the question a driver actually has, which is "where
+ * am I losing the most, and to what?"
+ */
+export function trackProgressPanel(progress: TrackProgress[]): string {
+  if (progress.length === 0) {
+    return `
+<section class="panel">
+  <div class="panel__head"><h2>Your tracks</h2></div>
+  <div class="empty"><strong>No laps yet</strong>Drive with the app running and each track you visit appears here.</div>
+</section>`;
+  }
+
+  const rows = progress
+    .map(
+      (p) => `
+    <tr>
+      <td>
+        <div class="driver__name">${escapeHtml(p.track)}</div>
+        <div class="driver__handle">${escapeHtml(p.carClass ?? p.car)}</div>
+      </td>
+      <td class="num col-r">${p.lapCount}</td>
+      <td class="num col-r laptime">${escapeHtml(lapTime(p.bestLapTimeSeconds))}</td>
+      <td class="num col-r hide-sm" style="color:var(--muted)">${escapeHtml(lapTime(p.referenceLapTimeSeconds))}</td>
+      <td class="num col-r laptime ${p.gapSeconds === null ? "t-none" : p.gapSeconds <= 0 ? "t-pb" : "t-slow"}">${
+        p.gapSeconds === null ? "&mdash;" : escapeHtml(gapText(p.gapSeconds))
+      }</td>
+    </tr>`,
+    )
+    .join("");
+
+  return `
+<section class="panel">
+  <div class="panel__head">
+    <h2>Your tracks</h2>
+    <span class="tag">Biggest gap first</span>
+  </div>
+  <table class="tower">
+    <thead>
+      <tr>
+        <th>Track</th>
+        <th class="col-r">Laps</th>
+        <th class="col-r">Your best</th>
+        <th class="col-r hide-sm">Reference</th>
+        <th class="col-r">Gap</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="panel__body" style="border-top:1px solid var(--line-soft)">
+    <p class="hint">Gap is your best lap against the quickest reference published for that track in the same class. A dash means nothing has been published to compare against yet.</p>
+  </div>
+</section>`;
 }
 
 export function progressPanel(rows: SessionRow[]): string {
@@ -118,7 +206,7 @@ export function progressPanel(rows: SessionRow[]): string {
   </div>
   <div class="panel__body">
     ${lapTimeChart(points)}
-    ${points.length >= 2 ? `<p class="chart-note">Faster laps sit higher · ${points.length} laps at this track</p>` : ""}
+    ${points.length >= 2 ? `<p class="chart-note">Faster laps sit higher &middot; ${points.length} laps at this track</p>` : ""}
   </div>
 </section>`;
 }
@@ -164,7 +252,7 @@ export function sessionTowerPanel(rows: SessionRow[], linkBase: string | null): 
       }
       <td class="num col-r laptime ${timingClass(r.lapTimeSeconds, allLaps)}">${escapeHtml(lapTime(r.lapTimeSeconds))}</td>
       <td class="num col-r hide-sm" style="color:var(--dim)">${escapeHtml(shortDate(r.createdAt))}</td>
-      ${linkBase ? `<td class="chev">›</td>` : ""}
+      ${linkBase ? `<td class="chev">&rsaquo;</td>` : ""}
     </tr>`;
       })
       .join("")}
@@ -191,7 +279,7 @@ export function refLapPanel(title: string, laps: RefLapRow[], emptyHint: string)
   <div class="ref">
     <div style="min-width:0">
       <div class="ref__label">${escapeHtml(l.label)}</div>
-      <div class="ref__meta">${escapeHtml(l.track)} · ${escapeHtml(l.car)}</div>
+      <div class="ref__meta">${escapeHtml(l.track)} &middot; ${escapeHtml(l.car)}</div>
     </div>
     <div class="ref__time">${escapeHtml(lapTime(l.lapTimeSeconds))}</div>
   </div>`,

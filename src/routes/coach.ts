@@ -6,6 +6,7 @@ import {
   getAllStudents,
   getStudentDetail,
   getPublicReferenceLaps,
+  getTrackProgress,
   createReferenceLap,
   deleteReferenceLap,
 } from "../db/queries";
@@ -40,7 +41,11 @@ coachRoutes.get("/driver/:id", async (c) => {
   if (!detail) {
     return c.text("Driver not found.", 404);
   }
-  return c.html(driverDetailPage(user, detail.student, detail.sessions, detail.referenceLaps));
+  // Same per-track/class gap table the driver sees on their own page --
+  // a coach opening someone's profile wants the same answer they do:
+  // which combination is furthest off the reference.
+  const progress = await getTrackProgress(studentId);
+  return c.html(driverDetailPage(user, detail.student, detail.sessions, detail.referenceLaps, progress));
 });
 
 // Global reference laps: upload a lap here and it appears for every

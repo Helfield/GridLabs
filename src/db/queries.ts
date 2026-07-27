@@ -224,3 +224,130 @@ export async function getPublicLapsForTrack(track: string) {
   });
   return { laps, sampleData: sample?.data ?? null };
 }
+
+// ------------------------------------------------------- track progress
+
+/**
+ * The racing class out of a car string, or null if it can't be told.
+ *
+ * The app builds car names as "<class> . <entry>" (e.g.
+ * "GT3 . Iron Lynx 2025 #63:ELMS"), so the class is the part before the
+ * separator. Laps uploaded through the website are typed by hand and
+ * often have no class at all, hence the keyword sweep as a second try,
+ * and null as an honest third answer rather than a guess.
+ */
+function carClass(car: string | null | undefined): string | null {
+  if (!car) return null;
+
+  const parts = car.split(/[\u00b7|]/);
+  if (parts.length > 1 && parts[0].trim()) {
+    return parts[0].trim().toUpperCase();
+  }
+
+  const known = ["HYPERCAR", "LMDH", "LMH", "LMP2", "LMP3", "GTE", "GT3", "GT4"];
+  const upper = car.toUpperCase();
+  for (const name of known) {
+    if (upper.includes(name)) return name;
+  }
+  return null;
+}
+
+/**
+ * Whether a lap in one car can fairly be compared to a reference set in
+ * another: same class only. A GT3 driver measured against a Hypercar
+ * reference would see a gap they can never close, which is worse than
+ * showing no gap at all.
+ *
+ * When either side's class is unknown the comparison is allowed. That's
+ * deliberate -- refusing would leave most rows blank, since laps typed
+ * in through the website rarely carry a class.
+ */
+function sameClass(a: string | null | undefined, b: string | null | undefined): boolean {
+  const ca = carClass(a);
+  const cb = carClass(b);
+  if (ca === null || cb === null) return true;
+  return ca === cb;
+}
+
+export type TrackProgress = {
+  track: string;
+  carClass: string | null;
+  car: string;              // the car they most recently drove here
+  lapCount: number;
+  bestLapTimeSeconds: number | null;
+  referenceLapTimeSeconds: number | null;
+  gapSeconds: number | null;   // yours minus the reference; negative means faster
+};
+
+/**
+ * One row per track and class this driver has laps in, with the gap to
+ * the best published reference for the same track and class.
+ *
+ * Per track/class rather than overall, because a lap time only means
+ * something against the same circuit and machinery -- an aggregate
+ * "fastest lap" across tracks compares numbers that aren't comparable.
+ * The gap IS comparable across rows, which is what makes it worth
+ * sorting on: the biggest gap is where there's most to gain.
+ */
+export async function getTrackProgress(userId: number): Promise<TrackProgress[]> {
+  const [drivenLaps, references] = await Promise.all([
+    db.query.sessions.findMany({
+      where: eq(sessions.userId, userId),
+      columns: { track: true, car: true, lapTimeSeconds: true, createdAt: true },
+      orderBy: (s, { desc }) => [desc(s.createdAt)],
+    }),
+    db.query.referenceLaps.findMany({
+      where: eq(referenceLaps.isPublic, true),
+      columns: { track: true, car: true, lapTimeSeconds: true },
+    }),
+  ]);
+
+  const groups = new Map<string, TrackProgress>();
+
+  for (const lap of drivenLaps) {
+    const cls = carClass(lap.car);
+    const key = `${lap.track}||${cls ?? ""}`;
+    let row = groups.get(key);
+    if (!row) {
+      row = {
+        track: lap.track,
+        carClass: cls,
+        car: lap.car,        // sessions come back newest first, so this
+        lapCount: 0,         // is the car they drove here most recently
+        bestLapTimeSeconds: null,
+        referenceLapTimeSeconds: null,
+        gapSeconds: null,
+      };
+      groups.set(key, row);
+    }
+    row.lapCount += 1;
+    if (
+      lap.lapTimeSeconds !== null &&
+      (row.bestLapTimeSeconds === null || lap.lapTimeSeconds < row.bestLapTimeSeconds)
+    ) {
+      row.bestLapTimeSeconds = lap.lapTimeSeconds;
+    }
+  }
+
+  for (const row of groups.values()) {
+    let best: number | null = null;
+    for (const ref of references) {
+      if (ref.track !== row.track) continue;
+      if (!sameClass(ref.car, row.car)) continue;
+      if (ref.lapTimeSeconds === null) continue;
+      if (best === null || ref.lapTimeSeconds < best) best = ref.lapTimeSeconds;
+    }
+    row.referenceLapTimeSeconds = best;
+    row.gapSeconds =
+      best !== null && row.bestLapTimeSeconds !== null ? row.bestLapTimeSeconds - best : null;
+  }
+
+  // Biggest gap first -- that's where the time is. Rows with no
+  // reference to compare against sort last; they're not a finding.
+  return [...groups.values()].sort((a, b) => {
+    if (a.gapSeconds === null && b.gapSeconds === null) return a.track.localeCompare(b.track);
+    if (a.gapSeconds === null) return 1;
+    if (b.gapSeconds === null) return -1;
+    return b.gapSeconds - a.gapSeconds;
+  });
+}
