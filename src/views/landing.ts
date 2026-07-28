@@ -68,7 +68,10 @@ export function landingPage(inviteUrl: string): string {
   </div>
 </section>`;
 
-  return layout("Coaching for Le Mans Ultimate", body);
+  return layout("Coaching for Le Mans Ultimate", body, null, {
+    description:
+      "Grid Labs reads your telemetry as you drive and compares it, corner by corner, against a reference lap — yours, or a quicker driver's. Free for members of the Discord.",
+  });
 }
 
 export function notInDiscordPage(inviteUrl: string): string {

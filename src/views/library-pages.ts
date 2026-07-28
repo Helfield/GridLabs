@@ -149,7 +149,7 @@ ${laps
 </table>`;
 
   const body = `
-<a class="backlink" href="/library">? All tracks</a>
+<a class="backlink" href="/library">&larr; All tracks</a>
 <div class="phead">
   <div>
     <span class="eyebrow">Track</span>

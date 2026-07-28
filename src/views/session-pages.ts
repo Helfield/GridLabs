@@ -547,11 +547,19 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
         applyView();
       }, { passive: false });
 
-      svg.addEventListener('mousedown', function(e){
+      // Pointer events rather than mouse events: one code path covers
+      // mouse, trackpad, touch and pen. The CSS already sets
+      // touch-action:none on these, which only makes sense if touch is
+      // actually handled -- it wasn't before, so on a tablet the traces
+      // were inert.
+      svg.addEventListener('pointerdown', function(e){
         dragging = true; moved = false; dragFrom = e.clientX;
+        // Capture keeps the drag alive when the finger/cursor leaves the
+        // SVG, instead of the pan sticking half way along the lap.
+        try { svg.setPointerCapture(e.pointerId); } catch (err) {}
       });
 
-      svg.addEventListener('mousemove', function(e){
+      svg.addEventListener('pointermove', function(e){
         if (dragging){
           var rect = svg.getBoundingClientRect();
           var dx = (e.clientX - dragFrom) / rect.width * view.w;
@@ -563,10 +571,20 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
           show(indexAt(svg, e.clientX));
         }
       });
+
+      svg.addEventListener('pointerup', function(e){
+        // There's no hover on a touchscreen, so a tap that didn't pan is
+        // how a touch user places the cursor. This is what the "moved"
+        // flag was always for -- it was being set but never read.
+        if (dragging && !moved) show(indexAt(svg, e.clientX));
+        dragging = false;
+        try { svg.releasePointerCapture(e.pointerId); } catch (err) {}
+      });
     })(traces[t]);
   }
 
-  window.addEventListener('mouseup', function(){ dragging = false; });
+  window.addEventListener('pointerup', function(){ dragging = false; });
+  window.addEventListener('pointercancel', function(){ dragging = false; });
 
   var reset = document.getElementById('tel-reset');
   if (reset) reset.addEventListener('click', function(){

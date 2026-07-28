@@ -25,18 +25,50 @@ export type NavUser = {
   discordAvatarUrl: string | null;
 } | null;
 
+// Falls back to gridlabs.com if SITE_URL isn't set -- only used to build
+// absolute URLs for og:image/og:url, which social crawlers require
+// (relative paths in OG tags are silently ignored by most of them).
+const SITE_URL = (process.env.SITE_URL ?? "https://gridlabs.com").replace(/\/+$/, "");
+const DEFAULT_DESCRIPTION =
+  "Telemetry coaching for Le Mans Ultimate. Compare your lap against a reference corner by corner and see exactly where the time goes.";
+
 export function layout(
   title: string,
   bodyHtml: string,
   user: NavUser = null,
-  options: { wide?: boolean; bare?: boolean } = {},
+  options: { wide?: boolean; bare?: boolean; description?: string } = {},
 ): string {
+  const description = options.description ?? DEFAULT_DESCRIPTION;
+  const fullTitle = `${escapeHtml(title)} · GridLabs`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)} · GridLabs</title>
+<title>${fullTitle}</title>
+<meta name="description" content="${escapeHtml(description)}">
+<meta name="theme-color" content="#0B0E14">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GridLabs">
+<meta property="og:title" content="${fullTitle}">
+<meta property="og:description" content="${escapeHtml(description)}">
+<meta property="og:url" content="${SITE_URL}">
+<meta property="og:image" content="${SITE_URL}/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${fullTitle}">
+<meta name="twitter:description" content="${escapeHtml(description)}">
+<meta name="twitter:image" content="${SITE_URL}/og-image.png">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap" rel="stylesheet">

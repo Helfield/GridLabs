@@ -124,8 +124,13 @@ authRoutes.get("/discord/callback", async (c) => {
     return c.html(notInDiscordPage(DISCORD_INVITE_URL));
   }
 
+  // size=256 is requested explicitly -- Discord's CDN otherwise falls
+  // back to a small default render, which then gets upscaled (and
+  // blurred) by the browser wherever the avatar is shown larger than
+  // that, e.g. the 54px avatar on the driver detail page. 256 stays
+  // crisp up to a ~4x-DPI display at that size with a tiny file cost.
   const avatarUrl = profile.avatar
-    ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png`
+    ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png?size=256`
     : null;
 
   // Coach accounts are determined by Discord ID, via a comma-separated
