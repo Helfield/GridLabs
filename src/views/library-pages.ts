@@ -28,9 +28,13 @@ export type LibraryLap = {
  * image files to source, licence, or keep in sync with the sim, and a
  * track can never show the wrong picture: the drawing is the lap.
  *
- * Braking is coloured on the line (amber light, red hard), matching the
- * in-app track map so the two read the same way.
+ * Braking is coloured red on the line, matching the in-app track map's
+ * single threshold -- this used to have a separate amber tier for light
+ * braking, dropped because the live pedal traces already show that
+ * nuance elsewhere; this map only needs to answer "where do you brake".
  */
+const BRAKE_ON = 0.15;
+
 function layoutSvg(data: any, width: number, height: number, showBraking: boolean): string {
   const samples = data?.samples;
   if (!samples || typeof samples !== "object") return placeholderSvg(width, height);
@@ -75,7 +79,7 @@ function layoutSvg(data: any, width: number, height: number, showBraking: boolea
     const [x1, y1] = project(points[i]);
     const [x2, y2] = project(points[i + 1]);
     const brake = Math.max(points[i].brake ?? 0, points[i + 1].brake ?? 0);
-    const colour = brake > 0.5 ? "#ff3b3b" : brake > 0.15 ? "#ffb020" : "var(--fastest)";
+    const colour = brake > BRAKE_ON ? "#ff3b3b" : "var(--fastest)";
     segs.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${colour}" stroke-width="4" stroke-linecap="round"/>`);
   }
   return `<svg class="layout" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${segs.join("")}</svg>`;
@@ -170,9 +174,8 @@ ${laps
     <div class="panel__body">
       ${layoutSvg(sampleData, 420, 320, true)}
       <div class="legend" style="margin-top:14px">
-        <span><i style="background:var(--fastest)"></i>Full throttle</span>
-        <span><i style="background:#ffb020"></i>Light braking</span>
-        <span><i style="background:#ff3b3b"></i>Hard braking</span>
+        <span><i style="background:#ff3b3b"></i>Braking</span>
+        <span><i style="background:var(--fastest)"></i>Off the brakes</span>
       </div>
     </div>
   </section>
