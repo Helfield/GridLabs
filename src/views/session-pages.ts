@@ -436,11 +436,11 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
 
         ${trace("Speed", speedPath, "var(--pb)", refSpeedPath)}
         ${trace("Brake", brakePath, "#ff3b3b", refBrakePath, brakeArea)}
-        ${throttlePath ? trace("Throttle", throttlePath, "#ff3b3b", refThrottlePath, throttleArea) : ""}
+        ${throttlePath ? trace("Throttle", throttlePath, "var(--pb)", refThrottlePath, throttleArea) : ""}
 
         <div class="legend" style="margin-top:2px">
-          <span><i style="background:var(--pb)"></i>Your speed</span>
-          <span><i style="background:#ff3b3b"></i>Your pedals</span>
+          <span><i style="background:var(--pb)"></i>Your speed / throttle</span>
+          <span><i style="background:#ff3b3b"></i>Your brake</span>
           ${hasRef ? `<span><i style="background:var(--fastest)"></i>Reference</span>` : ""}
         </div>
         ${hasThrottle ? "" : `<p class="hint">This lap has no throttle trace -- it was driven before the app recorded it.</p>`}
