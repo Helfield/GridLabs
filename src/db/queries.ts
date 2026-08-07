@@ -17,9 +17,6 @@ export type StudentSummary = {
   lastSessionAt: Date | null;
 };
 
-// One query for the student list, one grouped query for their session
-// stats, merged in JS -- avoids an N+1 query per student while staying
-// simple to read.
 export async function getAllStudents(): Promise<StudentSummary[]> {
   const students = await db.query.users.findMany({
     where: eq(users.role, "student"),
@@ -80,11 +77,6 @@ export async function getStudentDetail(studentId: number) {
   return { student, sessions: studentSessions, referenceLaps: studentLaps };
 }
 
-/**
- * One session plus every other session the same user drove at the same
- * track. The detail page needs both: the lap itself is meaningless
- * without the laps around it to compare against.
- */
 export async function getSessionWithTrackHistory(sessionId: number) {
   const session = await db.query.sessions.findFirst({
     where: eq(sessions.id, sessionId),
@@ -97,10 +89,6 @@ export async function getSessionWithTrackHistory(sessionId: number) {
   return { session, sameTrack };
 }
 
-// Create a reference lap. Used both by the local telemetry app's API
-// upload (owner-only, isPublic optional, no carDisplay) and by the
-// coach-facing "Global reference laps" page (always isPublic: true,
-// carDisplay typed in by the coach).
 export async function createReferenceLap(input: {
   ownerId: number;
   track: string;
@@ -118,17 +106,10 @@ export async function createReferenceLap(input: {
   return created;
 }
 
-// Remove a reference lap -- used by the coach's "Global reference laps"
-// page to take a lap out of circulation for everyone.
 export async function deleteReferenceLap(id: number) {
   await db.delete(referenceLaps).where(eq(referenceLaps.id, id));
 }
 
-// Lightweight listing for the local telemetry bridge app: every lap this
-// user can drive against (their own + every global/public one), WITHOUT
-// the heavy per-bin `data` blob -- the app fetches that separately, only
-// for the one lap the student actually picks. Keeps the "which laps are
-// available" call fast even as the library of global laps grows.
 export async function getAvailableReferenceLaps(userId: number) {
   return db.query.referenceLaps.findMany({
     where: or(eq(referenceLaps.ownerId, userId), eq(referenceLaps.isPublic, true)),
@@ -143,16 +124,10 @@ export async function getAvailableReferenceLaps(userId: number) {
       lapTimeSeconds: true,
       isPublic: true,
       createdAt: true,
-      // data intentionally omitted -- see getReferenceLapForDownload
     },
   });
 }
 
-// Full lap (including the per-bin `data` blob) for the local app to load
-// once a student has picked a specific reference lap to drive against.
-// Access check: must be the lap's owner, or the lap must be public --
-// this is what stops one student pulling another private lap by guessing
-// an id.
 export async function getReferenceLapForDownload(id: number, userId: number) {
   const lap = await db.query.referenceLaps.findFirst({ where: eq(referenceLaps.id, id) });
   if (!lap) return null;
@@ -160,13 +135,6 @@ export async function getReferenceLapForDownload(id: number, userId: number) {
   return lap;
 }
 
-// ---------------------------------------------------------------- library
-
-// One row per track that has at least one published lap, for the track
-// grid. Two queries rather than one: the listing needs no telemetry, and
-// pulling every lap's full sample blob just to count them would move
-// megabytes to render a page of thumbnails. The second query fetches
-// data for only the representative lap per track that draws the layout.
 export async function getTrackSummaries() {
   const laps = await db.query.referenceLaps.findMany({
     where: eq(referenceLaps.isPublic, true),
@@ -205,8 +173,6 @@ export async function getTrackSummaries() {
     .sort((a, b) => a.track.localeCompare(b.track));
 }
 
-// Every published lap for one track, plus one lap's data to draw the
-// layout from.
 export async function getPublicLapsForTrack(track: string) {
   const laps = await db.query.referenceLaps.findMany({
     where: and(eq(referenceLaps.isPublic, true), eq(referenceLaps.track, track)),
@@ -225,8 +191,6 @@ export async function getPublicLapsForTrack(track: string) {
   return { laps, sampleData: sample?.data ?? null };
 }
 
-// ------------------------------------------------------- track progress
-
 /**
  * The racing class out of a car string, or null if it can't be told.
  *
@@ -235,8 +199,12 @@ export async function getPublicLapsForTrack(track: string) {
  * separator. Laps uploaded through the website are typed by hand and
  * often have no class at all, hence the keyword sweep as a second try,
  * and null as an honest third answer rather than a guess.
+ *
+ * Exported (was module-private) so db/promotions.ts can reuse the exact
+ * same class-matching this file already established, rather than a
+ * second definition of "same class" drifting from this one.
  */
-function carClass(car: string | null | undefined): string | null {
+export function carClass(car: string | null | undefined): string | null {
   if (!car) return null;
 
   const parts = car.split(/[\u00b7|]/);
@@ -261,8 +229,10 @@ function carClass(car: string | null | undefined): string | null {
  * When either side's class is unknown the comparison is allowed. That's
  * deliberate -- refusing would leave most rows blank, since laps typed
  * in through the website rarely carry a class.
+ *
+ * Exported alongside carClass -- see that function's docstring.
  */
-function sameClass(a: string | null | undefined, b: string | null | undefined): boolean {
+export function sameClass(a: string | null | undefined, b: string | null | undefined): boolean {
   const ca = carClass(a);
   const cb = carClass(b);
   if (ca === null || cb === null) return true;
@@ -272,23 +242,13 @@ function sameClass(a: string | null | undefined, b: string | null | undefined): 
 export type TrackProgress = {
   track: string;
   carClass: string | null;
-  car: string;              // the car they most recently drove here
+  car: string;
   lapCount: number;
   bestLapTimeSeconds: number | null;
   referenceLapTimeSeconds: number | null;
-  gapSeconds: number | null;   // yours minus the reference; negative means faster
+  gapSeconds: number | null;
 };
 
-/**
- * One row per track and class this driver has laps in, with the gap to
- * the best published reference for the same track and class.
- *
- * Per track/class rather than overall, because a lap time only means
- * something against the same circuit and machinery -- an aggregate
- * "fastest lap" across tracks compares numbers that aren't comparable.
- * The gap IS comparable across rows, which is what makes it worth
- * sorting on: the biggest gap is where there's most to gain.
- */
 export async function getTrackProgress(userId: number): Promise<TrackProgress[]> {
   const [drivenLaps, references] = await Promise.all([
     db.query.sessions.findMany({
@@ -312,8 +272,8 @@ export async function getTrackProgress(userId: number): Promise<TrackProgress[]>
       row = {
         track: lap.track,
         carClass: cls,
-        car: lap.car,        // sessions come back newest first, so this
-        lapCount: 0,         // is the car they drove here most recently
+        car: lap.car,
+        lapCount: 0,
         bestLapTimeSeconds: null,
         referenceLapTimeSeconds: null,
         gapSeconds: null,
@@ -342,8 +302,6 @@ export async function getTrackProgress(userId: number): Promise<TrackProgress[]>
       best !== null && row.bestLapTimeSeconds !== null ? row.bestLapTimeSeconds - best : null;
   }
 
-  // Biggest gap first -- that's where the time is. Rows with no
-  // reference to compare against sort last; they're not a finding.
   return [...groups.values()].sort((a, b) => {
     if (a.gapSeconds === null && b.gapSeconds === null) return a.track.localeCompare(b.track);
     if (a.gapSeconds === null) return 1;
@@ -352,15 +310,6 @@ export async function getTrackProgress(userId: number): Promise<TrackProgress[]>
   });
 }
 
-/**
- * The reference lap a given session should be measured against: the
- * fastest published lap for the same track and class that actually
- * carries telemetry.
- *
- * Telemetry is the requirement, not just a time -- a reference with no
- * samples can't be drawn on a trace, so a slower lap that has them is
- * more useful here than a quicker one that doesn't.
- */
 export async function getReferenceForComparison(track: string, car: string) {
   const candidates = await db.query.referenceLaps.findMany({
     where: and(eq(referenceLaps.isPublic, true), eq(referenceLaps.track, track)),
