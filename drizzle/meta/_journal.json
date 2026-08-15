@@ -15,6 +15,13 @@
       "when": 1785021504462,
       "tag": "0001_salty_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786431729127,
+      "tag": "0002_lovely_juggernaut",
+      "breakpoints": true
     }
   ]
 }
