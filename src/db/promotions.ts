@@ -277,6 +277,49 @@ export async function rejectPromotion(approvalId: number): Promise<boolean> {
   return true;
 }
 
+/**
+ * Coach-only manual override: publish this exact session's lap as a
+ * public reference RIGHT NOW, regardless of what decidePromotion() would
+ * have said. This is for a coach who has actually looked at the lap
+ * breakdown on /session/:id and decided it's worth sharing -- not the
+ * automatic beat-the-current-reference logic above, which only fires on
+ * upload and only for laps that are already faster than what's live.
+ *
+ * Still marked autoPromoted: true, same as evaluateSessionForPromotion's
+ * own inserts -- this is a student-sourced lap, so a later genuinely
+ * faster student lap should be free to replace it automatically rather
+ * than needing another manual approval. autoPromoted: false is reserved
+ * for laps a coach typed in by hand via the "Global reference laps" form.
+ */
+export async function promoteSessionToReference(
+  sessionId: number,
+): Promise<{ ok: true; referenceLapId: number } | { ok: false; reason: string }> {
+  const session = await db.query.sessions.findFirst({ where: eq(sessions.id, sessionId) });
+  if (!session) return { ok: false, reason: "Session not found." };
+  if (session.lapTimeSeconds === null) {
+    return { ok: false, reason: "This lap has no recorded time and can't be published." };
+  }
+
+  const owner = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
+  const [created] = await db
+    .insert(referenceLaps)
+    .values({
+      ownerId: session.userId,
+      track: session.track,
+      car: session.car,
+      carDisplay: null,
+      label: `Fastest by ${owner?.name ?? "a student"} -- ${formatLapTime(session.lapTimeSeconds)}`,
+      data: session.data,
+      lapTimeSeconds: session.lapTimeSeconds,
+      isPublic: true,
+      autoPromoted: true,
+      sourceSessionId: session.id,
+    })
+    .returning({ id: referenceLaps.id });
+
+  return { ok: true, referenceLapId: created.id };
+}
+
 // --------------------------------------------------------------- leaderboard
 
 /**

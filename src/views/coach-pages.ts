@@ -93,7 +93,7 @@ ${statStrip(driverSessions, driverRefLaps.length, progress)}
 <div class="grid-2 mt">
   <div class="stack">
     ${trackProgressPanel(progress)}
-    ${sessionTowerPanel(driverSessions, null)}
+    ${sessionTowerPanel(driverSessions, "/session")}
   </div>
   <div class="stack">
     ${refLapPanel("Their reference laps", driverRefLaps, "Nothing saved yet — they need a personal best with the app running.")}

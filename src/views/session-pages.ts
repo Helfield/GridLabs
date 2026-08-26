@@ -96,6 +96,15 @@ export function sessionDetailPage(
   backHref: string,
   backLabel: string,
   reference: ReferenceRow = null,
+  // Coach-only manual override: publish this exact lap as a public
+  // reference regardless of whether it beats anything currently live.
+  // Kept separate from the automatic beat-the-reference flow in
+  // db/promotions.ts -- this is a human looking at the breakdown and
+  // deciding it's worth sharing, not the system's own judgement.
+  canPromote: boolean = false,
+  // Set after a successful POST to /session/:id/promote redirects back
+  // here with ?promoted=1, so the coach gets confirmation it worked.
+  justPromoted: boolean = false,
 ): string {
   const trackTimes = sameTrackSessions.map((s) => s.lapTimeSeconds).filter((t): t is number => t !== null);
   const trackBest = trackTimes.length ? Math.min(...trackTimes) : null;
@@ -149,8 +158,33 @@ export function sessionDetailPage(
   </div>
 </section>`;
 
+  const coachTools = canPromote
+    ? `
+<section class="panel" style="margin-bottom:18px;border-color:var(--fastest)">
+  <div class="panel__body" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div>
+      <strong>Coach tools</strong>
+      <p class="hint" style="margin:4px 0 0">Publish this lap as a downloadable reference for every student — regardless of whether it currently beats anything on the board.</p>
+    </div>
+    <form action="/session/${session.id}/promote" method="post" onsubmit="return confirm('Publish this lap as a public reference lap for everyone?')">
+      <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Promote to reference lap</button>
+    </form>
+  </div>
+</section>`
+    : "";
+
+  const promotedBanner = justPromoted
+    ? `
+<section class="panel" style="margin-bottom:18px;border-color:var(--pb)">
+  <div class="panel__body"><strong style="color:var(--pb)">Published.</strong> This lap is now a public reference lap — students will see it under "Shared with you".</div>
+</section>`
+    : "";
+
   const body = `
 <a class="backlink" href="${escapeHtml(backHref)}">&larr; ${escapeHtml(backLabel)}</a>
+
+${coachTools}
+${promotedBanner}
 
 <div class="phead">
   <div>
