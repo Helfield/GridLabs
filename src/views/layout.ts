@@ -93,7 +93,7 @@ function navBar(user: NavUser): string {
       <span class="mark__bars" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="mark__text">GridLabs</span>
     </a>
-    <a class="btn btn--ghost btn--sm" href="/#join">Sign in</a>
+    <a class="btn btn--ghost btn--sm" href="/auth/discord/login">Sign in</a>
   </div>
 </header>`;
   }

@@ -63,6 +63,12 @@ app.get("/dashboard", requireAuth, async (c) => {
   return c.redirect(user.role === "coach" ? "/coach" : "/student");
 });
 
-app.get("/login", (c) => c.redirect("/"));
+// Straight into Discord OAuth. This used to bounce to the landing page,
+// whose "Get access" form insists on a name and email before it will
+// continue -- fine for a first signup, a dead end for someone who
+// already has an account and just got sent here by requireAuth. The
+// callback looks accounts up by Discord ID, so a returning user needs
+// nothing more than the Discord round-trip.
+app.get("/login", (c) => c.redirect("/auth/discord/login"));
 
 export default app;

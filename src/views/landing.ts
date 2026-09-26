@@ -31,7 +31,8 @@ export function landingPage(inviteUrl: string): string {
     </form>
     <p class="card-signup__fine">
       We check your Discord for server membership — nothing gets posted on your behalf.<br>
-      Not in yet? <a href="${escapeHtml(inviteUrl)}">Join the Discord</a> first.
+      Not in yet? <a href="${escapeHtml(inviteUrl)}">Join the Discord</a> first.<br>
+      Already have an account? <a href="/auth/discord/login">Sign in with Discord</a> — no form needed.
     </p>
   </div>
 </section>
