@@ -11,6 +11,7 @@ import {
   deleteReferenceLap,
 } from "../db/queries";
 import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../views/coach-pages";
+import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
 
 export const coachRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -54,7 +55,23 @@ coachRoutes.get("/reference-laps", async (c) => {
   const user = await getUserById(c.get("userId"));
   if (!user) return c.redirect("/login");
   const laps = await getPublicReferenceLaps();
-  return c.html(referenceLapsPage(user, laps));
+  const synced = c.req.query("discord");
+  const notice =
+    synced === undefined
+      ? null
+      : synced === "off"
+        ? "Discord leaderboard is off -- set DISCORD_LEADERBOARD_WEBHOOK_URL in Railway's Variables to turn it on."
+        : `Re-posted ${synced} track${synced === "1" ? "" : "s"} to the leaderboard channel.`;
+  return c.html(referenceLapsPage(user, laps, { enabled: leaderboardEnabled(), notice }));
+});
+
+// Rebuild every track's leaderboard message from scratch. The boards
+// keep themselves current on upload, so this exists for the times the
+// channel gets out of step by hand -- a message deleted, the webhook
+// recreated -- and for the very first population.
+coachRoutes.post("/discord-leaderboard/sync", async (c) => {
+  const result = await syncAllLeaderboards();
+  return c.redirect(`/coach/reference-laps?discord=${result.enabled ? result.tracks : "off"}`);
 });
 
 coachRoutes.post("/reference-laps", async (c) => {

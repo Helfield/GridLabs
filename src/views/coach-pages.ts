@@ -117,6 +117,7 @@ export function referenceLapsPage(
     lapTimeSeconds: number | null;
     createdAt: Date;
   }>,
+  discord: { enabled: boolean; notice: string | null } = { enabled: false, notice: null },
 ): string {
   const rows =
     laps.length === 0
@@ -192,6 +193,16 @@ ${laps
       ${rows}
     </div>
   </section>
-</div>`;
+</div>
+<section class="panel" style="margin-top:18px">
+  <div class="panel__head"><h2>Discord leaderboard</h2><span class="tag">${discord.enabled ? "on" : "off"}</span></div>
+  <div class="panel__body">
+    <p class="hint">One message per track in the leaderboard channel: each driver's fastest valid lap, top five per car class, GT3 never ranked against LMP2. It edits itself whenever a faster lap is uploaded and announces a new class leader. Re-post if the channel ever gets out of step — a message deleted by hand, say.</p>
+    ${discord.notice ? `<p class="hint" style="color:var(--pb)">${escapeHtml(discord.notice)}</p>` : ""}
+    <form action="/coach/discord-leaderboard/sync" method="post" style="margin-top:10px">
+      <button class="btn btn--ghost btn--sm" type="submit"${discord.enabled ? "" : " disabled"}>Re-post all tracks now</button>
+    </form>
+  </div>
+</section>`;
   return layout("Global reference laps", body, navUser);
 }

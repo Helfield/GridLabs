@@ -10,6 +10,7 @@ import { landingPage } from "./views/landing";
 import { sessionRoutes } from "./routes/session";
 import { libraryRoutes } from "./routes/library";
 import { downloadRoutes } from "./routes/download";
+import { leaderboardEnabled, syncAllLeaderboards } from "./discord/leaderboard";
 
 export type AppVariables = { userId: number };
 
@@ -70,5 +71,21 @@ app.get("/dashboard", requireAuth, async (c) => {
 // callback looks accounts up by Discord ID, so a returning user needs
 // nothing more than the Discord round-trip.
 app.get("/login", (c) => c.redirect("/auth/discord/login"));
+
+// Bring the Discord leaderboard channel up to date shortly after boot.
+// Cheap when nothing changed (each track's board is hashed and only
+// edited on a difference), and it's what first populates the channel
+// the moment the webhook variable is set, without anyone clicking
+// anything. Delayed so it never competes with serving the first
+// requests after a deploy.
+if (leaderboardEnabled()) {
+  setTimeout(() => {
+    syncAllLeaderboards()
+      .then((r) => console.log(`Discord leaderboard: ${r.tracks} track(s) checked.`))
+      .catch((err) => console.error("Discord leaderboard startup sync failed:", err));
+  }, 5000);
+} else {
+  console.log("Discord leaderboard: off (DISCORD_LEADERBOARD_WEBHOOK_URL not set).");
+}
 
 export default app;

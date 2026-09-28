@@ -3,6 +3,7 @@ import { db } from "../db/client";
 import { users, sessions, referenceLaps } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { getAvailableReferenceLaps, getReferenceLapForDownload } from "../db/queries";
+import { syncTrackLeaderboard } from "../discord/leaderboard";
 
 type ApiVariables = { apiUserId: number };
 export const apiRoutes = new Hono<{ Variables: ApiVariables }>();
@@ -55,6 +56,16 @@ apiRoutes.post("/sessions", async (c) => {
       data: body.data ?? null,
     })
     .returning({ id: sessions.id });
+
+  // Keep the Discord leaderboard for this track current. Deliberately
+  // not awaited: the app gets its 201 straight away, and a Discord
+  // outage is logged rather than turned into a failed upload.
+  if (typeof body.lapTimeSeconds === "number") {
+    syncTrackLeaderboard(body.track).catch((err) => {
+      console.error(`Discord leaderboard sync failed for ${body.track}:`, err);
+    });
+  }
+
   return c.json({ id: created.id }, 201);
 });
 

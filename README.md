@@ -86,3 +86,17 @@ failure (400/401).
   ID — fine to start, worth hardening before this handles real user data
   at scale).
 - Google Sheets export (mentioned as a future want, not scoped yet).
+
+## Discord leaderboard channel
+
+Set `DISCORD_LEADERBOARD_WEBHOOK_URL` (Railway → Variables) to a webhook
+for the channel that should carry the boards, and the site posts one
+message per track: every driver's fastest *valid* lap (plausible time, no
+standstill in the telemetry), top five per car class, classes never mixed.
+The message is edited in place whenever the desktop app uploads a faster
+lap, and a one-line announcement goes out when a class gets a new leader.
+The channel is populated automatically on the first start after the
+variable is set; the coach's "Global reference laps" page has a "Re-post
+all tracks now" button for when the channel is out of step. Message ids
+live in `discord_leaderboard_posts` (migration `0003`; the table is also
+created on first use if the migration hasn't been run).

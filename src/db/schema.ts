@@ -74,3 +74,17 @@ export const promotionApprovals = pgTable("promotion_approvals", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   resolvedAt: timestamp("resolved_at"),
 });
+
+// One row per track that has a leaderboard message in the Discord
+// channel (see discord/leaderboard.ts). The message is edited in place
+// as laps come in rather than re-posted, which needs its id remembered
+// across restarts; content_hash lets a sync skip the Discord call when
+// nothing on the board changed; leaders records who was fastest in each
+// class at the last sync, so a change of leader can be announced.
+export const discordLeaderboardPosts = pgTable("discord_leaderboard_posts", {
+  track: text("track").primaryKey(),
+  messageId: text("message_id").notNull(),
+  contentHash: text("content_hash"),
+  leaders: jsonb("leaders"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
