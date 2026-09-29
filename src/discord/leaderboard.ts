@@ -43,6 +43,11 @@ const BOARD_DESIGN = 1;
 // those still there are cleaned up on the first run -- see publish().)
 const BOARD_KEY = "__board__";
 
+// One row per track+class holding the id of its latest "new fastest lap"
+// announcement, so the next one can replace it instead of piling up when
+// someone is stringing together records. Keyed `__ann__:<track>||<class>`.
+const ANN_PREFIX = "__ann__:";
+
 type Leader = { userId: number; name: string; lapTimeSeconds: number };
 type Leaders = Record<string, Leader>; // key: `${track}||${class}`
 
@@ -133,7 +138,8 @@ async function publish(repost: boolean, announce = true): Promise<void> {
 
   const rows = await db.query.discordLeaderboardPosts.findMany();
   const board = rows.find((r) => r.track === BOARD_KEY);
-  const legacy = rows.filter((r) => r.track !== BOARD_KEY);
+  const announcements = new Map(rows.filter((r) => r.track.startsWith(ANN_PREFIX)).map((r) => [r.track, r]));
+  const legacy = rows.filter((r) => r.track !== BOARD_KEY && !r.track.startsWith(ANN_PREFIX));
 
   // What the records were before this update, to spot a beaten one. The
   // first run after the move from one-message-per-track has no board row
@@ -192,7 +198,7 @@ async function publish(repost: boolean, announce = true): Promise<void> {
       const beaten = own
         ? ` — beats their own \`${formatLapTime(prev.lapTimeSeconds)}\` by ${(prev.lapTimeSeconds - now.lapTimeSeconds).toFixed(3)}s`
         : ` — beats ${escapeMd(prev.name)}'s \`${formatLapTime(prev.lapTimeSeconds)}\` by ${(prev.lapTimeSeconds - now.lapTimeSeconds).toFixed(3)}s`;
-      await send(
+      const posted = await send(
         "POST",
         `${url}?wait=true`,
         {
@@ -201,6 +207,27 @@ async function publish(repost: boolean, announce = true): Promise<void> {
         },
         null,
       );
+
+      // Replace, don't stack: the previous announcement for this same
+      // track and class is now out of date (its record has just been
+      // beaten), so take it down. New first, old second, as with the board.
+      const annKey = ANN_PREFIX + key;
+      const previous = announcements.get(annKey);
+      if (previous) {
+        await deleteMessage(url, previous.messageId).catch((err) =>
+          console.error(`Couldn't delete the previous announcement for ${track} ${cls}:`, err),
+        );
+      }
+      if (posted) {
+        const stamp = new Date();
+        await db
+          .insert(discordLeaderboardPosts)
+          .values({ track: annKey, messageId: posted, contentHash: null, leaders: null, updatedAt: stamp })
+          .onConflictDoUpdate({
+            target: discordLeaderboardPosts.track,
+            set: { messageId: posted, updatedAt: stamp },
+          });
+      }
     }
   }
 }

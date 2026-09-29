@@ -1,8 +1,13 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
+import { NAME_MAX } from "../db/names";
 
 type Nav = NonNullable<NavUser>;
 
-export function accountPage(navUser: Nav, apiToken: string | null): string {
+export function accountPage(
+  navUser: Nav,
+  apiToken: string | null,
+  notice: { kind: "ok" | "error"; text: string } | null = null,
+): string {
   const tokenBlock = apiToken
     ? `
     <div class="token">${escapeHtml(apiToken)}</div>
@@ -25,6 +30,25 @@ export function accountPage(navUser: Nav, apiToken: string | null): string {
     <p class="phead__sub">Signed in with Discord · ${escapeHtml(navUser.role)}</p>
   </div>
 </div>
+
+<section class="panel" style="margin-bottom:22px">
+  <div class="panel__head"><h2>Display name</h2></div>
+  <div class="panel__body">
+    <p class="hint" style="margin-top:0">This is the name shown on your laps, the driver list and the Discord leaderboard. Changing it doesn't affect your Discord account or your login.</p>
+    ${
+      notice
+        ? `<p class="hint" style="color:${notice.kind === "ok" ? "var(--pb)" : "var(--warn)"};margin-bottom:10px">${escapeHtml(notice.text)}</p>`
+        : ""
+    }
+    <form action="/account/name" method="post" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <label class="field" style="margin:0;flex:1;min-width:220px">
+        <span class="field__label">Name</span>
+        <input name="name" required minlength="2" maxlength="${NAME_MAX}" value="${escapeHtml(navUser.name)}" autocomplete="nickname" spellcheck="false">
+      </label>
+      <button class="btn btn--ghost btn--sm" type="submit">Save name</button>
+    </form>
+  </div>
+</section>
 
 <div class="grid-2">
   <section class="panel">

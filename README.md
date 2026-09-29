@@ -121,3 +121,11 @@ page. **Restore this lap** reverses all of it. The lap is flagged in the
 `0004`, also applied idempotently at startup by `db/ensure-schema.ts`).
 Separately, laps whose telemetry shows a shortcut are rejected automatically
 (`hasCutSegment` in `db/promotions.ts`).
+
+## Changing your display name
+
+Every signed-in user can change their display name on the **Account** page
+(`/account`). It's 2–24 characters — letters (accents fine), digits, spaces and
+`. ' _ -` — so it fits a leaderboard row and can be drawn with the bundled fonts.
+It updates everywhere the site shows the name and redraws the Discord board; it
+doesn't touch the Discord account or login. Rules live in `src/db/names.ts`.
