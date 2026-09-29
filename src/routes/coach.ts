@@ -67,7 +67,7 @@ coachRoutes.get("/reference-laps", async (c) => {
         ? null
         : synced === "off"
           ? "Discord leaderboard is off -- set DISCORD_LEADERBOARD_WEBHOOK_URL in Railway's Variables to turn it on."
-          : `Re-posted ${synced} track${synced === "1" ? "" : "s"} to the leaderboard channel.`;
+          : `Leaderboard re-posted (${synced} track${synced === "1" ? "" : "s"} on the board).`;
   return c.html(referenceLapsPage(user, laps, { enabled: leaderboardEnabled(), notice }));
 });
 
@@ -84,7 +84,7 @@ coachRoutes.post("/promote-fastest", async (c) => {
 // channel gets out of step by hand -- a message deleted, the webhook
 // recreated -- and for the very first population.
 coachRoutes.post("/discord-leaderboard/sync", async (c) => {
-  const result = await syncAllLeaderboards();
+  const result = await syncAllLeaderboards({ repost: true });
   return c.redirect(`/coach/reference-laps?discord=${result.enabled ? result.tracks : "off"}`);
 });
 

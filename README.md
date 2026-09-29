@@ -89,17 +89,24 @@ failure (400/401).
 
 ## Discord leaderboard channel
 
-Set `DISCORD_LEADERBOARD_WEBHOOK_URL` (Railway → Variables) to a webhook
-for the channel that should carry the boards, and the site posts one
-message per track: every driver's fastest *valid* lap (plausible time, no
-standstill in the telemetry), top five per car class, classes never mixed.
-The message is edited in place whenever the desktop app uploads a faster
-lap, and a one-line announcement goes out when a class gets a new leader.
-The channel is populated automatically on the first start after the
-variable is set; the coach's "Global reference laps" page has a "Re-post
-all tracks now" button for when the channel is out of step. Message ids
-live in `discord_leaderboard_posts` (migration `0003`; the table is also
-created on first use if the migration hasn't been run).
+Set `DISCORD_LEADERBOARD_WEBHOOK_URL` (Railway → Variables) to a webhook for
+the channel that should carry the board. The site keeps **one message** there:
+a picture (drawn by the site, in the website's own palette and fonts) of the
+fastest valid lap in every car class on every track, edited in place whenever
+a record changes. Classes are never mixed. When a record is *beaten*, a
+one-line announcement is posted below it; a record appearing for the first
+time, or a coach disqualifying or restoring a lap, just updates the board.
+Tip: right-click the board message in Discord and **Pin** it so it's always one
+click away however many announcements pile up beneath it.
+
+The picture is `src/discord/board-image.ts` (SVG → PNG via `@resvg/resvg-wasm`,
+fonts bundled in `src/discord/fonts`, so nothing is fetched at runtime). If it
+ever can't be drawn, the same records are posted as a text embed instead and the
+error is logged. The coach's "Global reference laps" page has a "Re-post the
+board now" button for when the channel is out of step. The message id lives in
+`discord_leaderboard_posts` (migration `0003`; the table is also created on
+first use). Messages left by the earlier one-message-per-track version are
+deleted automatically on the first run.
 
 ## Disqualifying laps
 

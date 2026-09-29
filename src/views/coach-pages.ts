@@ -197,14 +197,14 @@ ${laps
 <section class="panel" style="margin-top:18px">
   <div class="panel__head"><h2>Discord leaderboard</h2><span class="tag">${discord.enabled ? "on" : "off"}</span></div>
   <div class="panel__body">
-    <p class="hint">One message per track in the leaderboard channel: each driver's fastest valid lap, top five per car class, GT3 never ranked against LMP2. It edits itself whenever a faster lap is uploaded and announces a new class leader. Every valid lap from a driver's uploads counts, and the fastest in each track and class is also published as that class's reference lap automatically (\"Publish fastest laps now\" runs that on demand). Re-post if the channel ever gets out of step — a message deleted by hand, say.</p>
+    <p class="hint">The leaderboard channel holds one board: the fastest valid lap in every car class on every track, drawn as a picture and edited in place whenever a record changes (GT3 is never ranked against LMP2). When a record is beaten, a one-line announcement is posted below it. The fastest lap in each track and class is also published automatically as that class's reference lap ("Publish fastest laps now" runs that on demand). Re-post the board if it ever gets out of step — a message deleted by hand, say — or to move it to the bottom of the channel.</p>
     ${discord.notice ? `<p class="hint" style="color:var(--pb)">${escapeHtml(discord.notice)}</p>` : ""}
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
       <form action="/coach/promote-fastest" method="post">
         <button class="btn btn--ghost btn--sm" type="submit">Publish fastest laps now</button>
       </form>
       <form action="/coach/discord-leaderboard/sync" method="post">
-        <button class="btn btn--ghost btn--sm" type="submit"${discord.enabled ? "" : " disabled"}>Re-post all tracks now</button>
+        <button class="btn btn--ghost btn--sm" type="submit"${discord.enabled ? "" : " disabled"}>Re-post the board now</button>
       </form>
     </div>
   </div>
