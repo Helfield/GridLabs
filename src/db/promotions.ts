@@ -49,7 +49,59 @@ export function hasStandstillSample(data: unknown): boolean {
 export function isValidLap(lapTimeSeconds: number | null | undefined, data: unknown): boolean {
   if (!isPlausibleLapTime(lapTimeSeconds)) return false;
   if (hasStandstillSample(data)) return false;
+  if (hasCutSegment(data)) return false;
   return true;
+}
+
+// A lap is stored one sample per 5 m of LAP DISTANCE -- how far round
+// the circuit the sim says the car is -- alongside where the car really
+// was in the world. Those two agree on any lap that was driven: the
+// distance between two samples on the map is about the lap distance
+// between them (a little less round a bend). They stop agreeing when
+// the car takes a shortcut, because the sim's lap-distance counter jumps
+// ahead to wherever the car rejoins the circuit while the car itself
+// has barely moved.
+//
+// Measured on real uploads before this was added: every lap that sat
+// ~30 s clear of its class on Daytona had a single jump where 1.2-1.4 km
+// of lap distance was covered with almost no movement (lap distance
+// 11-42x the distance actually travelled), while every legitimate lap
+// checked -- four tracks, three classes -- had none and topped out at
+// about 1.1x. The thresholds below sit far from both: a sparse-sample
+// hairpin can only reach ~1.6x, and a real gap in the recording still
+// has the car's true position on either side, so it isn't flagged.
+const BIN_SIZE_M = 5;
+export const CUT_MIN_UNDRIVEN_M = 150;
+export const CUT_MIN_RATIO = 2.5;
+
+/**
+ * Whether a lap contains a shortcut: a stretch where the lap-distance
+ * counter jumped ahead of where the car actually was. This is the
+ * website's own track-limits check, independent of the sim's flag --
+ * which the desktop app reads but has never confirmed against a real
+ * invalidated lap, and which older builds of the app don't consult at
+ * all. Laps with no positions can't be judged and pass.
+ */
+export function hasCutSegment(data: unknown): boolean {
+  const samples = (data as any)?.samples;
+  if (!samples || typeof samples !== "object") return false;
+
+  const points = Object.keys(samples)
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)
+    .map((bin) => ({ bin, x: samples[bin]?.world_x, z: samples[bin]?.world_z }))
+    .filter((p) => typeof p.x === "number" && typeof p.z === "number");
+
+  for (let i = 1; i < points.length; i++) {
+    const lapDistance = (points[i].bin - points[i - 1].bin) * BIN_SIZE_M;
+    if (lapDistance < 25) continue;
+    const travelled = Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
+    if (lapDistance - travelled >= CUT_MIN_UNDRIVEN_M && lapDistance / Math.max(travelled, 1) >= CUT_MIN_RATIO) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -186,11 +238,20 @@ export async function evaluateSessionForPromotion(session: {
  * out-lap or a lap uploaded without data, and the next one down is
  * the one that counts.
  */
-export async function promoteBestLaps(): Promise<{ promoted: number; tracks: number }> {
-  const trackRows = await db
-    .selectDistinct({ track: sessions.track })
-    .from(sessions)
-    .where(isNotNull(sessions.lapTimeSeconds));
+export async function promoteBestLaps(
+  onlyTrack?: string,
+): Promise<{ promoted: number; unpublished: number; tracks: number }> {
+  const unpublished = await unpublishInvalidPromotions();
+
+  // Disqualified laps are never candidates. `onlyTrack` narrows the pass
+  // to one circuit -- what disqualifying/restoring a lap needs, without
+  // re-walking every track.
+  const trackRows = onlyTrack
+    ? [{ track: onlyTrack }]
+    : await db
+        .selectDistinct({ track: sessions.track })
+        .from(sessions)
+        .where(and(isNotNull(sessions.lapTimeSeconds), eq(sessions.excluded, false)));
 
   let promoted = 0;
   for (const { track } of trackRows) {
@@ -198,7 +259,7 @@ export async function promoteBestLaps(): Promise<{ promoted: number; tracks: num
     // Summary columns only -- `data` is the whole lap's telemetry, so it
     // is fetched one row at a time and only for laps in contention.
     const candidates = await db.query.sessions.findMany({
-      where: and(eq(sessions.track, track), isNotNull(sessions.lapTimeSeconds)),
+      where: and(eq(sessions.track, track), isNotNull(sessions.lapTimeSeconds), eq(sessions.excluded, false)),
       columns: { id: true, userId: true, car: true, lapTimeSeconds: true },
       orderBy: [asc(sessions.lapTimeSeconds)],
     });
@@ -214,7 +275,37 @@ export async function promoteBestLaps(): Promise<{ promoted: number; tracks: num
       if (decision.action === "promote") promoted += 1;
     }
   }
-  return { promoted, tracks: trackRows.length };
+  return { promoted, unpublished, tracks: trackRows.length };
+}
+
+/**
+ * Take back any reference lap THIS SITE published automatically that
+ * doesn't pass today's validation. The rules get stricter over time (the
+ * shortcut check was added after the first backfill had already
+ * published three cut laps), and a reference that shouldn't be one does
+ * more than look wrong: as the fastest lap in its class it also blocks
+ * every honest lap behind it from being promoted. Unpublished, not
+ * deleted -- the driver keeps their own copy, and nothing is lost if a
+ * rule turns out too strict. Laps a coach typed in (autoPromoted false)
+ * are never touched here.
+ */
+async function unpublishInvalidPromotions(): Promise<number> {
+  const published = await db.query.referenceLaps.findMany({
+    where: and(eq(referenceLaps.isPublic, true), eq(referenceLaps.autoPromoted, true)),
+    columns: { id: true, lapTimeSeconds: true, data: true, sourceSessionId: true },
+  });
+  // Also anything published from a lap a coach has since disqualified.
+  const disqualified = new Set(
+    (await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.excluded, true))).map((s) => s.id),
+  );
+  let count = 0;
+  for (const lap of published) {
+    const fromDisqualified = lap.sourceSessionId !== null && disqualified.has(lap.sourceSessionId);
+    if (!fromDisqualified && isValidLap(lap.lapTimeSeconds, lap.data)) continue;
+    await db.update(referenceLaps).set({ isPublic: false }).where(eq(referenceLaps.id, lap.id));
+    count += 1;
+  }
+  return count;
 }
 
 function formatLapTime(seconds: number): string {
@@ -244,6 +335,9 @@ export async function promoteSessionToReference(
   if (!session) return { ok: false, reason: "Session not found." };
   if (session.lapTimeSeconds === null) {
     return { ok: false, reason: "This lap has no recorded time and can't be published." };
+  }
+  if (session.excluded) {
+    return { ok: false, reason: "This lap is disqualified. Restore it first if it should count." };
   }
 
   const owner = await db.query.users.findFirst({ where: eq(users.id, session.userId) });

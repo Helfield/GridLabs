@@ -48,6 +48,15 @@ export const sessions = pgTable("sessions", {
   sector2Seconds: real("sector_2_seconds"),
   sector3Seconds: real("sector_3_seconds"),
   data: jsonb("data"),
+  // A coach can disqualify a lap (track limits the automatic check
+  // missed, a bugged time, anything). An excluded lap stays on the
+  // driver's own history, marked, but is left out of the leaderboards,
+  // the roster's best-lap column, and reference-lap promotion -- and any
+  // reference it had already become is taken down. Reversible: restoring
+  // it puts it back in contention. See db/queries.ts setSessionExcluded.
+  excluded: boolean("excluded").notNull().default(false),
+  excludedReason: text("excluded_reason"),
+  excludedAt: timestamp("excluded_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

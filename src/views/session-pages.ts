@@ -12,6 +12,8 @@ type SessionRow = {
   sector2Seconds: number | null;
   sector3Seconds: number | null;
   data?: unknown;
+  excluded?: boolean;
+  excludedReason?: string | null;
   createdAt: Date;
 };
 
@@ -105,6 +107,10 @@ export function sessionDetailPage(
   // Set after a successful POST to /session/:id/promote redirects back
   // here with ?promoted=1, so the coach gets confirmation it worked.
   justPromoted: boolean = false,
+  // Coach-only: disqualify or restore this lap. `moderation` is set
+  // after a successful POST redirects back here, for confirmation.
+  canModerate: boolean = false,
+  moderation: "disqualified" | "restored" | null = null,
 ): string {
   const trackTimes = sameTrackSessions.map((s) => s.lapTimeSeconds).filter((t): t is number => t !== null);
   const trackBest = trackTimes.length ? Math.min(...trackTimes) : null;
@@ -173,6 +179,56 @@ export function sessionDetailPage(
 </section>`
     : "";
 
+  // A disqualified lap says so on its own page, to everyone who can see
+  // it -- the driver deserves to know why it's missing from the boards.
+  const dqBanner = session.excluded
+    ? `
+<section class="panel" style="margin-bottom:18px;border-color:var(--warn)">
+  <div class="panel__body">
+    <strong style="color:var(--warn)">Disqualified.</strong>
+    This lap doesn't count towards the leaderboards or reference laps.${
+      session.excludedReason ? ` <span style="color:var(--muted)">Reason: ${escapeHtml(session.excludedReason)}</span>` : ""
+    }
+  </div>
+</section>`
+    : "";
+
+  const moderationTools = canModerate
+    ? session.excluded
+      ? `
+<section class="panel" style="margin-bottom:18px">
+  <div class="panel__body" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div>
+      <strong>Disqualified lap</strong>
+      <p class="hint" style="margin:4px 0 0">Put it back in contention: it returns to the leaderboards, and to reference-lap consideration if it's the fastest in its class.</p>
+    </div>
+    <form action="/session/${session.id}/restore" method="post">
+      <button class="btn btn--ghost" type="submit">Restore this lap</button>
+    </form>
+  </div>
+</section>`
+      : `
+<section class="panel" style="margin-bottom:18px">
+  <div class="panel__body">
+    <form action="/session/${session.id}/exclude" method="post" style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap" onsubmit="return confirm('Disqualify this lap? It will be removed from the leaderboards and, if it was a reference lap, taken down.')">
+      <div style="flex:1;min-width:260px">
+        <strong>Disqualify this lap</strong>
+        <p class="hint" style="margin:4px 0 8px">Removes it from the leaderboards, the Discord board and reference laps (the next-fastest valid lap takes over). It stays in the driver's history, marked. You can restore it any time.</p>
+        <input type="text" name="reason" maxlength="300" placeholder="Reason (optional) — e.g. cut the chicane" autocomplete="off" style="width:100%">
+      </div>
+      <button class="btn btn--ghost" style="border-color:var(--warn);color:var(--warn)" type="submit">Disqualify lap</button>
+    </form>
+  </div>
+</section>`
+    : "";
+
+  const moderationBanner = moderation
+    ? `
+<section class="panel" style="margin-bottom:18px;border-color:${moderation === "disqualified" ? "var(--warn)" : "var(--pb)"}">
+  <div class="panel__body"><strong>${moderation === "disqualified" ? "Lap disqualified." : "Lap restored."}</strong> Leaderboards and reference laps have been updated.</div>
+</section>`
+    : "";
+
   const promotedBanner = justPromoted
     ? `
 <section class="panel" style="margin-bottom:18px;border-color:var(--pb)">
@@ -183,7 +239,10 @@ export function sessionDetailPage(
   const body = `
 <a class="backlink" href="${escapeHtml(backHref)}">&larr; ${escapeHtml(backLabel)}</a>
 
-${coachTools}
+${dqBanner}
+${moderationBanner}
+${moderationTools}
+${excludedPromoteGuard(session.excluded, coachTools)}
 ${promotedBanner}
 
 <div class="phead">
@@ -672,4 +731,11 @@ function sectorNote(value: number | null, all: Array<number | null>): string {
   const best = Math.min(...valid);
   if (value <= best) return "Your best here";
   return `${delta(value - best)} off your best`;
+}
+
+// The manual "promote to reference" control makes no sense for a lap that
+// is disqualified (the route refuses it too), so it's hidden until the
+// lap is restored.
+function excludedPromoteGuard(excluded: boolean | undefined, coachTools: string): string {
+  return excluded ? "" : coachTools;
 }

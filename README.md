@@ -100,3 +100,17 @@ variable is set; the coach's "Global reference laps" page has a "Re-post
 all tracks now" button for when the channel is out of step. Message ids
 live in `discord_leaderboard_posts` (migration `0003`; the table is also
 created on first use if the migration hasn't been run).
+
+## Disqualifying laps
+
+A coach can disqualify any lap from its page (`/session/:id`): **Disqualify
+this lap**, with an optional reason. It's removed from every leaderboard
+(the Discord board included), the roster's best-lap column and reference-lap
+promotion; if it had been published as a reference lap that comes down and
+the next-fastest valid lap takes its place. The lap stays in the driver's
+history, struck through with a DQ tag, and the driver sees the reason on its
+page. **Restore this lap** reverses all of it. The lap is flagged in the
+`sessions` table (`excluded`, `excluded_reason`, `excluded_at`; migration
+`0004`, also applied idempotently at startup by `db/ensure-schema.ts`).
+Separately, laps whose telemetry shows a shortcut are rejected automatically
+(`hasCutSegment` in `db/promotions.ts`).

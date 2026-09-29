@@ -41,7 +41,7 @@ export async function listTracksWithLaps(): Promise<string[]> {
   const rows = await db
     .selectDistinct({ track: sessions.track })
     .from(sessions)
-    .where(isNotNull(sessions.lapTimeSeconds));
+    .where(and(isNotNull(sessions.lapTimeSeconds), eq(sessions.excluded, false)));
   // "Unknown Track" is what the app sends when the sim hasn't named the
   // circuit yet -- not a place anyone can set a time.
   return rows
@@ -55,7 +55,8 @@ export async function getTrackBoard(track: string, limit = LEADERBOARD_SIZE): Pr
   // run to hundreds of KB per row, so it's fetched one row at a time
   // below, and only for laps that are actually in contention.
   const candidates = await db.query.sessions.findMany({
-    where: and(eq(sessions.track, track), isNotNull(sessions.lapTimeSeconds)),
+    // Disqualified laps never make the board.
+    where: and(eq(sessions.track, track), isNotNull(sessions.lapTimeSeconds), eq(sessions.excluded, false)),
     columns: { id: true, userId: true, car: true, lapTimeSeconds: true, createdAt: true },
     orderBy: [asc(sessions.lapTimeSeconds)],
   });

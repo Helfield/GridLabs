@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import type { AppVariables } from "../index";
 import { requireAuth } from "./auth";
-import { getUserById, getSessionWithTrackHistory, getReferenceForComparison } from "../db/queries";
-import { promoteSessionToReference } from "../db/promotions";
+import { getUserById, getSessionWithTrackHistory, getReferenceForComparison, setSessionExcluded } from "../db/queries";
+import { promoteSessionToReference, promoteBestLaps } from "../db/promotions";
+import { syncTrackLeaderboard } from "../discord/leaderboard";
 import { sessionDetailPage } from "../views/session-pages";
 
 export const sessionRoutes = new Hono<{ Variables: AppVariables }>();
@@ -37,6 +38,9 @@ sessionRoutes.get("/:id", async (c) => {
   // sense (the "Global reference laps" upload form covers that).
   const canPromote = !isOwner && user.role === "coach";
   const justPromoted = c.req.query("promoted") === "1";
+  // Only coaches can disqualify or restore a lap -- their own included.
+  const canModerate = user.role === "coach";
+  const moderation = c.req.query("dq") === "1" ? "disqualified" : c.req.query("dq") === "0" ? "restored" : null;
 
   return c.html(
     sessionDetailPage(
@@ -48,6 +52,8 @@ sessionRoutes.get("/:id", async (c) => {
       reference,
       canPromote,
       justPromoted,
+      canModerate,
+      moderation,
     ),
   );
 });
@@ -71,3 +77,54 @@ sessionRoutes.post("/:id/promote", async (c) => {
 
   return c.redirect(`/session/${sessionId}?promoted=1`);
 });
+
+// Coach-only: disqualify a lap. It leaves every leaderboard (and the
+// Discord board for the track), and if it had been published as a
+// reference lap that comes down and the next-best valid lap takes over.
+// Reversible with /restore below.
+sessionRoutes.post("/:id/exclude", async (c) => {
+  const user = await getUserById(c.get("userId"));
+  if (!user || user.role !== "coach") return c.text("Not found.", 404);
+
+  const sessionId = Number(c.req.param("id"));
+  if (!Number.isInteger(sessionId)) return c.text("Not found.", 404);
+
+  const body = await c.req.parseBody();
+  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 300) : "";
+
+  const changed = await setSessionExcluded(sessionId, true, reason || null);
+  if (!changed) return c.text("Session not found.", 404);
+  await afterModeration(changed.track);
+  return c.redirect(`/session/${sessionId}?dq=1`);
+});
+
+sessionRoutes.post("/:id/restore", async (c) => {
+  const user = await getUserById(c.get("userId"));
+  if (!user || user.role !== "coach") return c.text("Not found.", 404);
+
+  const sessionId = Number(c.req.param("id"));
+  if (!Number.isInteger(sessionId)) return c.text("Not found.", 404);
+
+  const changed = await setSessionExcluded(sessionId, false, null);
+  if (!changed) return c.text("Session not found.", 404);
+  await afterModeration(changed.track);
+  return c.redirect(`/session/${sessionId}?dq=0`);
+});
+
+/**
+ * Bring everything that depends on the lap's status up to date for its
+ * track. The reference laps are settled before the redirect so the page
+ * that loads next is already right; the Discord board is refreshed in
+ * the background -- a slow or unreachable Discord must never make a
+ * disqualification look like it failed.
+ */
+async function afterModeration(track: string): Promise<void> {
+  try {
+    await promoteBestLaps(track);
+  } catch (err) {
+    console.error(`Reference-lap refresh after moderation failed for ${track}:`, err);
+  }
+  syncTrackLeaderboard(track).catch((err) => {
+    console.error(`Discord leaderboard sync failed for ${track}:`, err);
+  });
+}

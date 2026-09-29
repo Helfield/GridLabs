@@ -29,6 +29,13 @@
       "when": 1790616746219,
       "tag": "0003_discord_leaderboard",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790678242938,
+      "tag": "0004_disqualify_laps",
+      "breakpoints": true
     }
   ]
 }

@@ -25,7 +25,9 @@ export async function getAllStudents(): Promise<StudentSummary[]> {
     .select({
       userId: sessions.userId,
       sessionCount: sql<number>`count(*)`.as("session_count"),
-      bestLapTimeSeconds: sql<number | null>`min(${sessions.lapTimeSeconds})`.as("best_lap"),
+      // Disqualified laps don't count towards the roster's best lap (the
+      // lap COUNT and last-seen still include them: they were driven).
+      bestLapTimeSeconds: sql<number | null>`min(${sessions.lapTimeSeconds}) filter (where ${sessions.excluded} = false)`.as("best_lap"),
       lastSessionAt: sql<Date | null>`max(${sessions.createdAt})`.as("last_session"),
     })
     .from(sessions)
@@ -51,6 +53,28 @@ export async function getSessionsForUser(userId: number) {
     where: eq(sessions.userId, userId),
     orderBy: (s, { desc }) => [desc(s.createdAt)],
   });
+}
+
+/**
+ * Disqualify (or restore) a lap. Returns the session's track so the
+ * caller can refresh what depends on it, or null if there's no such
+ * session. A reason is kept only while excluded.
+ */
+export async function setSessionExcluded(
+  sessionId: number,
+  excluded: boolean,
+  reason: string | null,
+): Promise<{ track: string } | null> {
+  const [row] = await db
+    .update(sessions)
+    .set({
+      excluded,
+      excludedReason: excluded ? reason : null,
+      excludedAt: excluded ? new Date() : null,
+    })
+    .where(eq(sessions.id, sessionId))
+    .returning({ track: sessions.track });
+  return row ?? null;
 }
 
 export async function getReferenceLapsForUser(userId: number) {
@@ -290,7 +314,7 @@ export async function getTrackProgress(userId: number): Promise<TrackProgress[]>
   const [drivenLaps, references] = await Promise.all([
     db.query.sessions.findMany({
       where: eq(sessions.userId, userId),
-      columns: { track: true, car: true, lapTimeSeconds: true, createdAt: true },
+      columns: { track: true, car: true, lapTimeSeconds: true, createdAt: true, excluded: true },
       orderBy: (s, { desc }) => [desc(s.createdAt)],
     }),
     db.query.referenceLaps.findMany({
@@ -302,6 +326,7 @@ export async function getTrackProgress(userId: number): Promise<TrackProgress[]>
   const groups = new Map<string, TrackProgress>();
 
   for (const lap of drivenLaps) {
+    if (lap.excluded) continue; // disqualified: not part of anyone's progress
     const cls = carClass(lap.car);
     const key = `${lap.track}||${cls ?? ""}`;
     let row = groups.get(key);

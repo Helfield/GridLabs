@@ -10,6 +10,7 @@ type SessionRow = {
   sector1Seconds: number | null;
   sector2Seconds: number | null;
   sector3Seconds: number | null;
+  excluded?: boolean;
   createdAt: Date;
 };
 
@@ -212,7 +213,10 @@ export function progressPanel(rows: SessionRow[]): string {
 }
 
 export function sessionTowerPanel(rows: SessionRow[], linkBase: string | null): string {
-  const allLaps = rows.map((r) => r.lapTimeSeconds);
+  // Disqualified laps are shown but don't set the fastest/average the
+  // other laps are coloured against.
+  const counted = rows.filter((r) => !r.excluded);
+  const allLaps = counted.map((r) => r.lapTimeSeconds);
   const s1 = rows.map((r) => r.sector1Seconds);
   const s2 = rows.map((r) => r.sector2Seconds);
   const s3 = rows.map((r) => r.sector3Seconds);
@@ -250,7 +254,11 @@ export function sessionTowerPanel(rows: SessionRow[], linkBase: string | null): 
              <td class="num col-r ${timingClass(r.sector3Seconds, s3)}">${escapeHtml(sectorTime(r.sector3Seconds))}</td>`
           : ""
       }
-      <td class="num col-r laptime ${timingClass(r.lapTimeSeconds, allLaps)}">${escapeHtml(lapTime(r.lapTimeSeconds))}</td>
+      <td class="num col-r laptime ${r.excluded ? "" : timingClass(r.lapTimeSeconds, allLaps)}">${
+        r.excluded
+          ? `<span class="tag" style="color:var(--warn);border-color:var(--warn);margin-right:8px" title="Disqualified by a coach">DQ</span><span style="text-decoration:line-through;color:var(--dim)">${escapeHtml(lapTime(r.lapTimeSeconds))}</span>`
+          : escapeHtml(lapTime(r.lapTimeSeconds))
+      }</td>
       <td class="num col-r hide-sm" style="color:var(--dim)">${escapeHtml(shortDate(r.createdAt))}</td>
       ${linkBase ? `<td class="chev">&rsaquo;</td>` : ""}
     </tr>`;

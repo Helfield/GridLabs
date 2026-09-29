@@ -58,9 +58,11 @@ coachRoutes.get("/reference-laps", async (c) => {
   const laps = await getPublicReferenceLaps();
   const synced = c.req.query("discord");
   const published = c.req.query("published");
+  const removed = Number(c.req.query("removed") ?? 0);
   const notice =
     published !== undefined
-      ? `Published ${published} new fastest lap${published === "1" ? "" : "s"}.`
+      ? `Published ${published} new fastest lap${published === "1" ? "" : "s"}` +
+        (removed > 0 ? `; took down ${removed} that no longer pass validation (track cuts).` : ".")
       : synced === undefined
         ? null
         : synced === "off"
@@ -74,7 +76,7 @@ coachRoutes.get("/reference-laps", async (c) => {
 // and at startup; this is the "do it now" button.
 coachRoutes.post("/promote-fastest", async (c) => {
   const result = await promoteBestLaps();
-  return c.redirect(`/coach/reference-laps?published=${result.promoted}`);
+  return c.redirect(`/coach/reference-laps?published=${result.promoted}&removed=${result.unpublished}`);
 });
 
 // Rebuild every track's leaderboard message from scratch. The boards

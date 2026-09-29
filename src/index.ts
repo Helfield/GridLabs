@@ -12,6 +12,12 @@ import { libraryRoutes } from "./routes/library";
 import { downloadRoutes } from "./routes/download";
 import { leaderboardEnabled, syncAllLeaderboards } from "./discord/leaderboard";
 import { promoteBestLaps } from "./db/promotions";
+import { ensureSchema } from "./db/ensure-schema";
+
+// Before anything can query: add any column this version needs. A
+// failure is logged rather than fatal -- if the database is briefly
+// unreachable the site should still come up and retry on its own queries.
+await ensureSchema().catch((err) => console.error("ensureSchema failed:", err));
 
 export type AppVariables = { userId: number };
 
@@ -80,7 +86,11 @@ app.get("/login", (c) => c.redirect("/auth/discord/login"));
 // deploy.
 setTimeout(() => {
   promoteBestLaps()
-    .then((r) => console.log(`Reference laps: ${r.promoted} new fastest lap(s) published across ${r.tracks} track(s).`))
+    .then((r) =>
+      console.log(
+        `Reference laps: ${r.promoted} new fastest lap(s) published, ${r.unpublished} invalid one(s) taken down, across ${r.tracks} track(s).`,
+      ),
+    )
     .catch((err) => console.error("Reference-lap backfill failed:", err));
 }, 3000);
 
