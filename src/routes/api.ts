@@ -4,6 +4,7 @@ import { users, sessions, referenceLaps } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { getAvailableReferenceLaps, getReferenceLapForDownload } from "../db/queries";
 import { syncTrackLeaderboard } from "../discord/leaderboard";
+import { evaluateSessionForPromotion } from "../db/promotions";
 
 type ApiVariables = { apiUserId: number };
 export const apiRoutes = new Hono<{ Variables: ApiVariables }>();
@@ -57,13 +58,26 @@ apiRoutes.post("/sessions", async (c) => {
     })
     .returning({ id: sessions.id });
 
-  // Keep the Discord leaderboard for this track current. Deliberately
-  // not awaited: the app gets its 201 straight away, and a Discord
-  // outage is logged rather than turned into a failed upload.
+  // Two follow-ups, neither awaited: the app gets its 201 straight away,
+  // and a failure in either is logged rather than turned into a failed
+  // upload. If this lap is the fastest for its track and car class it
+  // becomes that class's public reference lap; the Discord leaderboard
+  // for the track is then brought up to date.
   if (typeof body.lapTimeSeconds === "number") {
-    syncTrackLeaderboard(body.track).catch((err) => {
-      console.error(`Discord leaderboard sync failed for ${body.track}:`, err);
-    });
+    evaluateSessionForPromotion({
+      id: created.id,
+      userId,
+      track: body.track,
+      car: body.car,
+      lapTimeSeconds: body.lapTimeSeconds,
+      data: body.data ?? null,
+    })
+      .catch((err) => console.error(`Reference-lap promotion failed for session ${created.id}:`, err))
+      .finally(() => {
+        syncTrackLeaderboard(body.track).catch((err) => {
+          console.error(`Discord leaderboard sync failed for ${body.track}:`, err);
+        });
+      });
   }
 
   return c.json({ id: created.id }, 201);

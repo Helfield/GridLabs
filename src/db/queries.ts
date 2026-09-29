@@ -139,19 +139,32 @@ export async function getTrackSummaries() {
   const laps = await db.query.referenceLaps.findMany({
     where: eq(referenceLaps.isPublic, true),
     orderBy: (r, { asc }) => [asc(r.lapTimeSeconds)],
-    columns: { id: true, track: true, lapTimeSeconds: true },
+    columns: { id: true, track: true, car: true, lapTimeSeconds: true },
   });
 
-  const byTrack = new Map<string, { lapCount: number; bestLapTimeSeconds: number | null; sampleId: number }>();
+  type Entry = {
+    lapCount: number;
+    bestLapTimeSeconds: number | null;
+    sampleId: number;
+    classBests: Map<string, number>;
+  };
+  const byTrack = new Map<string, Entry>();
   for (const lap of laps) {
-    const existing = byTrack.get(lap.track);
-    if (existing) {
-      existing.lapCount += 1;
-      if (existing.bestLapTimeSeconds === null || (lap.lapTimeSeconds !== null && lap.lapTimeSeconds < existing.bestLapTimeSeconds)) {
-        existing.bestLapTimeSeconds = lap.lapTimeSeconds;
-      }
-    } else {
-      byTrack.set(lap.track, { lapCount: 1, bestLapTimeSeconds: lap.lapTimeSeconds, sampleId: lap.id });
+    let entry = byTrack.get(lap.track);
+    if (!entry) {
+      // Laps arrive fastest-first, so the first one seen is the sample
+      // used to draw the layout.
+      entry = { lapCount: 0, bestLapTimeSeconds: lap.lapTimeSeconds, sampleId: lap.id, classBests: new Map() };
+      byTrack.set(lap.track, entry);
+    }
+    entry.lapCount += 1;
+    if (entry.bestLapTimeSeconds === null || (lap.lapTimeSeconds !== null && lap.lapTimeSeconds < entry.bestLapTimeSeconds)) {
+      entry.bestLapTimeSeconds = lap.lapTimeSeconds;
+    }
+    if (lap.lapTimeSeconds !== null) {
+      const cls = carClass(lap.car) ?? UNCLASSIFIED;
+      const best = entry.classBests.get(cls);
+      if (best === undefined || lap.lapTimeSeconds < best) entry.classBests.set(cls, lap.lapTimeSeconds);
     }
   }
   if (byTrack.size === 0) return [];
@@ -168,6 +181,9 @@ export async function getTrackSummaries() {
       track,
       lapCount: v.lapCount,
       bestLapTimeSeconds: v.bestLapTimeSeconds,
+      classBests: [...v.classBests.entries()]
+        .map(([cls, best]) => ({ carClass: cls, bestLapTimeSeconds: best }))
+        .sort((a, b) => classRank(a.carClass) - classRank(b.carClass) || a.carClass.localeCompare(b.carClass)),
       sampleData: dataById.get(v.sampleId) ?? null,
     }))
     .sort((a, b) => a.track.localeCompare(b.track));
@@ -182,13 +198,29 @@ export async function getPublicLapsForTrack(track: string) {
       label: true, lapTimeSeconds: true, createdAt: true,
     },
   });
-  if (laps.length === 0) return { laps, sampleData: null };
+  if (laps.length === 0) return { laps, classes: [], sampleData: null };
+
+  // Split by car class, fastest first within each -- a GT3 lap is never
+  // listed alongside (let alone ranked against) an LMP2 one.
+  const groups = new Map<string, typeof laps>();
+  for (const lap of laps) {
+    const cls = carClass(lap.car) ?? UNCLASSIFIED;
+    const list = groups.get(cls) ?? [];
+    list.push(lap);
+    groups.set(cls, list);
+  }
+  const classes = [...groups.entries()]
+    .map(([cls, list]) => ({
+      carClass: cls,
+      laps: [...list].sort((a, b) => (a.lapTimeSeconds ?? Infinity) - (b.lapTimeSeconds ?? Infinity)),
+    }))
+    .sort((a, b) => classRank(a.carClass) - classRank(b.carClass) || a.carClass.localeCompare(b.carClass));
 
   const sample = await db.query.referenceLaps.findFirst({
     where: eq(referenceLaps.id, laps[0].id),
     columns: { data: true },
   });
-  return { laps, sampleData: sample?.data ?? null };
+  return { laps, classes, sampleData: sample?.data ?? null };
 }
 
 /**
@@ -238,6 +270,11 @@ export function sameClass(a: string | null | undefined, b: string | null | undef
   if (ca === null || cb === null) return true;
   return ca === cb;
 }
+
+// Class naming/ordering lives in ../classes (pure, so views can use it
+// too); re-exported here so the rest of the data layer keeps one import.
+import { UNCLASSIFIED, classRank, classDisplayName } from "../classes";
+export { UNCLASSIFIED, classRank, classDisplayName };
 
 export type TrackProgress = {
   track: string;

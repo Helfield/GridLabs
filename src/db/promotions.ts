@@ -1,6 +1,6 @@
 import { db } from "./client";
-import { users, sessions, referenceLaps, promotionApprovals } from "./schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { users, sessions, referenceLaps } from "./schema";
+import { eq, and, inArray, isNotNull, asc } from "drizzle-orm";
 import { carClass, sameClass } from "./queries";
 
 // ------------------------------------------------------------ validation
@@ -52,6 +52,18 @@ export function isValidLap(lapTimeSeconds: number | null | undefined, data: unkn
   return true;
 }
 
+/**
+ * Whether a lap carries enough telemetry to be driven against. A
+ * reference lap is a file the app loads and follows around the circuit,
+ * so a session uploaded without its per-bin data (older app builds, or
+ * a failed attach) can sit on the leaderboard but can't be published as
+ * a reference -- there'd be nothing to download.
+ */
+export function hasUsableTelemetry(data: unknown): boolean {
+  const samples = (data as any)?.samples;
+  return !!samples && typeof samples === "object" && Object.keys(samples).length >= 10;
+}
+
 // -------------------------------------------------------- promotion decision
 
 export type PromotionDecision =
@@ -66,11 +78,13 @@ export type PromotionDecision =
  * Kept separate from evaluateSessionForPromotion's actual DB reads and
  * writes so this can be tested directly against plain objects.
  *
- * The approval boundary: nothing to protect -> promote automatically.
- * Beating another AUTO-PROMOTED reference -> promote automatically,
- * fastest among student-set laps just wins. Beating a COACH-SET
- * reference (autoPromoted: false) -> flagged for approval instead of
- * silently replacing something curated by hand.
+ * The fastest valid lap in a track/class simply becomes its public
+ * reference, whoever set the previous one. That includes a coach-typed
+ * reference: promoting adds a faster lap alongside it rather than
+ * removing it, so nothing the coach curated is lost -- the faster lap
+ * just becomes the one drivers are compared against. (This used to
+ * hold such laps for coach approval, but no page ever showed that
+ * queue, so those laps were parked forever.)
  */
 export function decidePromotion(input: {
   lapTimeSeconds: number;
@@ -84,43 +98,39 @@ export function decidePromotion(input: {
   if (input.lapTimeSeconds >= ref.lapTimeSeconds) {
     return { action: "skip", reason: "not faster than the current reference" };
   }
-  if (!ref.autoPromoted) {
-    return { action: "pending_approval", reason: "would replace a coach-uploaded reference" };
-  }
-  return { action: "promote", reason: "faster than the current auto-promoted reference" };
+  return { action: "promote", reason: "faster than the current reference" };
 }
 
 // ------------------------------------------------------------- DB orchestration
 
 /**
- * The current best public reference for a track/class, or null. Same
- * matching (isPublic + same track + sameClass) getReferenceForComparison
- * already uses in queries.ts, reused rather than re-derived so "what
- * counts as the reference right now" can never quietly diverge between
- * the two call sites.
+ * The current best public reference for a track and EXACT car class, or
+ * null. Strict on purpose: getReferenceForComparison lets an unknown
+ * class match anything (so hand-typed laps still get compared), but for
+ * deciding what to publish that leniency would let a class-less lap
+ * block a whole class, or a GT3 time compete with an LMP2 one.
  */
-async function getCurrentPublicReference(track: string, car: string) {
+async function getCurrentPublicReference(track: string, cls: string) {
   const candidates = await db.query.referenceLaps.findMany({
     where: and(eq(referenceLaps.isPublic, true), eq(referenceLaps.track, track)),
     columns: { id: true, car: true, lapTimeSeconds: true, autoPromoted: true },
   });
   const eligible = candidates
-    .filter((r) => sameClass(r.car, car) && r.lapTimeSeconds !== null)
-    .sort((a, b) => (a.lapTimeSeconds ?? Infinity) - (b.lapTimeSeconds ?? Infinity));
+    .filter((r) => carClass(r.car) === cls && r.lapTimeSeconds !== null)
+    .sort((x, y) => (x.lapTimeSeconds ?? Infinity) - (y.lapTimeSeconds ?? Infinity));
   return eligible[0] ?? null;
 }
 
 /**
- * Call this once, after a session row has been inserted. Validates the
- * lap, decides what should happen, and either does nothing, inserts a
- * new public auto-promoted reference lap, or raises a promotion_approvals
- * row for the coach.
+ * Call this once, after a session row has been inserted (and from the
+ * backfill below). Validates the lap and, if it is the fastest for its
+ * track and car class, publishes it as that class's reference lap.
  *
  * Does NOT touch the session's own row or delete/unpublish any existing
  * reference lap -- getReferenceForComparison and getCurrentPublicReference
- * both already pick the FASTEST public lap for a track/class, so an
- * older, now-slower auto-promoted lap simply stops being selected once a
- * faster one exists; there's nothing to clean up for that to work.
+ * both pick the FASTEST public lap for a track/class, so an older,
+ * now-slower lap simply stops being selected once a faster one exists;
+ * there's nothing to clean up for that to work.
  */
 export async function evaluateSessionForPromotion(session: {
   id: number;
@@ -133,114 +143,20 @@ export async function evaluateSessionForPromotion(session: {
   if (!isValidLap(session.lapTimeSeconds, session.data)) {
     return { action: "skip", reason: "lap failed validation (implausible duration or a standstill)" };
   }
+  const cls = carClass(session.car);
+  if (!cls) {
+    return { action: "skip", reason: "car class unknown, so there's nothing fair to rank it against" };
+  }
+  if (!hasUsableTelemetry(session.data)) {
+    return { action: "skip", reason: "no telemetry attached, so it couldn't be driven against" };
+  }
   // isValidLap already confirmed this is a number, but TypeScript can't
   // narrow across the function boundary.
   const lapTimeSeconds = session.lapTimeSeconds as number;
 
-  const currentReference = await getCurrentPublicReference(session.track, session.car);
+  const currentReference = await getCurrentPublicReference(session.track, cls);
   const decision = decidePromotion({ lapTimeSeconds, currentReference });
-
-  if (decision.action === "skip") {
-    return decision;
-  }
-
-  if (decision.action === "promote") {
-    const owner = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
-    await db.insert(referenceLaps).values({
-      ownerId: session.userId,
-      track: session.track,
-      car: session.car,
-      carDisplay: null,
-      label: `Fastest by ${owner?.name ?? "a student"} -- ${formatLapTime(lapTimeSeconds)}`,
-      data: session.data,
-      lapTimeSeconds,
-      isPublic: true,
-      autoPromoted: true,
-      sourceSessionId: session.id,
-    });
-    return decision;
-  }
-
-  // pending_approval -- currentReference must be non-null here, since
-  // decidePromotion only returns this action when there's a reference
-  // to be replacing (see its own branches above).
-  await db.insert(promotionApprovals).values({
-    sessionId: session.id,
-    track: session.track,
-    carClass: carClass(session.car),
-    lapTimeSeconds,
-    currentReferenceLapId: currentReference!.id,
-    currentReferenceLapTimeSeconds: currentReference!.lapTimeSeconds as number,
-    status: "pending",
-  });
-  return decision;
-}
-
-function formatLapTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds - minutes * 60;
-  return minutes > 0 ? `${minutes}:${rest.toFixed(3).padStart(6, "0")}` : rest.toFixed(3);
-}
-
-// ------------------------------------------------------------- approval queue
-
-export type PendingApproval = {
-  id: number;
-  sessionId: number;
-  track: string;
-  carClass: string | null;
-  lapTimeSeconds: number;
-  currentReferenceLapId: number;
-  currentReferenceLapTimeSeconds: number;
-  driverName: string;
-  createdAt: Date;
-};
-
-export async function getPendingApprovals(): Promise<PendingApproval[]> {
-  const pending = await db.query.promotionApprovals.findMany({
-    where: eq(promotionApprovals.status, "pending"),
-    orderBy: (p, { asc }) => [asc(p.createdAt)],
-  });
-  if (pending.length === 0) return [];
-
-  const sessionIds = pending.map((p) => p.sessionId);
-  const relatedSessions = await db.query.sessions.findMany({
-    where: inArray(sessions.id, sessionIds),
-    columns: { id: true, userId: true },
-  });
-  const userIdBySession = new Map(relatedSessions.map((s) => [s.id, s.userId]));
-
-  const userIds = [...new Set(relatedSessions.map((s) => s.userId))];
-  const owners = userIds.length
-    ? await db.query.users.findMany({ where: inArray(users.id, userIds), columns: { id: true, name: true } })
-    : [];
-  const nameByUserId = new Map(owners.map((u) => [u.id, u.name]));
-
-  return pending.map((p) => {
-    const userId = userIdBySession.get(p.sessionId);
-    return {
-      id: p.id,
-      sessionId: p.sessionId,
-      track: p.track,
-      carClass: p.carClass,
-      lapTimeSeconds: p.lapTimeSeconds,
-      currentReferenceLapId: p.currentReferenceLapId,
-      currentReferenceLapTimeSeconds: p.currentReferenceLapTimeSeconds,
-      driverName: (userId !== undefined && nameByUserId.get(userId)) || "Unknown driver",
-      createdAt: p.createdAt,
-    };
-  });
-}
-
-/** Coach approves: the session's lap becomes the new public reference. */
-export async function approvePromotion(approvalId: number): Promise<boolean> {
-  const approval = await db.query.promotionApprovals.findFirst({
-    where: eq(promotionApprovals.id, approvalId),
-  });
-  if (!approval || approval.status !== "pending") return false;
-
-  const session = await db.query.sessions.findFirst({ where: eq(sessions.id, approval.sessionId) });
-  if (!session) return false;
+  if (decision.action !== "promote") return decision;
 
   const owner = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
   await db.insert(referenceLaps).values({
@@ -248,33 +164,63 @@ export async function approvePromotion(approvalId: number): Promise<boolean> {
     track: session.track,
     car: session.car,
     carDisplay: null,
-    label: `Fastest by ${owner?.name ?? "a student"} -- ${formatLapTime(approval.lapTimeSeconds)}`,
+    label: `Fastest by ${owner?.name ?? "a student"} -- ${formatLapTime(lapTimeSeconds)}`,
     data: session.data,
-    lapTimeSeconds: approval.lapTimeSeconds,
+    lapTimeSeconds,
     isPublic: true,
     autoPromoted: true,
     sourceSessionId: session.id,
   });
-
-  await db
-    .update(promotionApprovals)
-    .set({ status: "approved", resolvedAt: new Date() })
-    .where(eq(promotionApprovals.id, approvalId));
-  return true;
+  return decision;
 }
 
-/** Coach rejects: nothing changes about the reference laps; just marks it decided. */
-export async function rejectPromotion(approvalId: number): Promise<boolean> {
-  const approval = await db.query.promotionApprovals.findFirst({
-    where: eq(promotionApprovals.id, approvalId),
-  });
-  if (!approval || approval.status !== "pending") return false;
+/**
+ * Publish the fastest valid lap for every track/class from laps already
+ * on the site. Uploads are handled as they arrive; this catches
+ * everything that was driven before that was wired up, and anything an
+ * upload-time check missed. Idempotent: a lap that's already the
+ * reference isn't faster than itself, so re-running does nothing.
+ *
+ * Walks each class fastest-first and takes the first lap that is valid
+ * AND carries telemetry -- a driver's quickest time is sometimes an
+ * out-lap or a lap uploaded without data, and the next one down is
+ * the one that counts.
+ */
+export async function promoteBestLaps(): Promise<{ promoted: number; tracks: number }> {
+  const trackRows = await db
+    .selectDistinct({ track: sessions.track })
+    .from(sessions)
+    .where(isNotNull(sessions.lapTimeSeconds));
 
-  await db
-    .update(promotionApprovals)
-    .set({ status: "rejected", resolvedAt: new Date() })
-    .where(eq(promotionApprovals.id, approvalId));
-  return true;
+  let promoted = 0;
+  for (const { track } of trackRows) {
+    if (!track || track === "Unknown Track") continue;
+    // Summary columns only -- `data` is the whole lap's telemetry, so it
+    // is fetched one row at a time and only for laps in contention.
+    const candidates = await db.query.sessions.findMany({
+      where: and(eq(sessions.track, track), isNotNull(sessions.lapTimeSeconds)),
+      columns: { id: true, userId: true, car: true, lapTimeSeconds: true },
+      orderBy: [asc(sessions.lapTimeSeconds)],
+    });
+
+    const done = new Set<string>();
+    for (const s of candidates) {
+      const cls = carClass(s.car);
+      if (!cls || done.has(cls)) continue;
+      const full = await db.query.sessions.findFirst({ where: eq(sessions.id, s.id), columns: { data: true } });
+      if (!isValidLap(s.lapTimeSeconds, full?.data) || !hasUsableTelemetry(full?.data)) continue;
+      done.add(cls);
+      const decision = await evaluateSessionForPromotion({ ...s, track, data: full?.data });
+      if (decision.action === "promote") promoted += 1;
+    }
+  }
+  return { promoted, tracks: trackRows.length };
+}
+
+function formatLapTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds - minutes * 60;
+  return minutes > 0 ? `${minutes}:${rest.toFixed(3).padStart(6, "0")}` : rest.toFixed(3);
 }
 
 /**

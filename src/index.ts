@@ -11,6 +11,7 @@ import { sessionRoutes } from "./routes/session";
 import { libraryRoutes } from "./routes/library";
 import { downloadRoutes } from "./routes/download";
 import { leaderboardEnabled, syncAllLeaderboards } from "./discord/leaderboard";
+import { promoteBestLaps } from "./db/promotions";
 
 export type AppVariables = { userId: number };
 
@@ -71,6 +72,17 @@ app.get("/dashboard", requireAuth, async (c) => {
 // callback looks accounts up by Discord ID, so a returning user needs
 // nothing more than the Discord round-trip.
 app.get("/login", (c) => c.redirect("/auth/discord/login"));
+
+// Publish the fastest valid lap per track and car class as its reference
+// lap, from everything uploaded so far. Uploads do this themselves as
+// they arrive; this catches laps driven before that existed. Idempotent,
+// and delayed so it never competes with the first requests after a
+// deploy.
+setTimeout(() => {
+  promoteBestLaps()
+    .then((r) => console.log(`Reference laps: ${r.promoted} new fastest lap(s) published across ${r.tracks} track(s).`))
+    .catch((err) => console.error("Reference-lap backfill failed:", err));
+}, 3000);
 
 // Bring the Discord leaderboard channel up to date shortly after boot.
 // Cheap when nothing changed (each track's board is hashed and only

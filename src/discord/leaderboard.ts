@@ -114,15 +114,15 @@ async function syncOne(track: string): Promise<void> {
   // the first post of a track isn't "news", and neither is a re-post.
   if (existing) {
     const before = (existing.leaders ?? {}) as Leaders;
-    for (const [cls, now_] of Object.entries(leaders)) {
+    for (const [cls, leader] of Object.entries(leaders)) {
       const prev = before[cls];
-      const changed = !prev || prev.userId !== now_.userId || now_.lapTimeSeconds < prev.lapTimeSeconds - 0.0005;
+      const changed = !prev || prev.userId !== leader.userId || leader.lapTimeSeconds < prev.lapTimeSeconds - 0.0005;
       if (!changed) continue;
       const beaten = prev
-        ? ` — beats ${escapeMd(prev.name)}'s \`${formatLapTime(prev.lapTimeSeconds)}\` by ${(prev.lapTimeSeconds - now_.lapTimeSeconds).toFixed(3)}s`
+        ? ` — beats ${escapeMd(prev.name)}'s \`${formatLapTime(prev.lapTimeSeconds)}\` by ${(prev.lapTimeSeconds - leader.lapTimeSeconds).toFixed(3)}s`
         : "";
       await postMessage(url, {
-        content: `🏆 **New fastest ${classDisplayName(cls)} lap at ${escapeMd(track)}:** \`${formatLapTime(now_.lapTimeSeconds)}\` by **${escapeMd(now_.name)}**${beaten}`,
+        content: `🏆 **New fastest ${classDisplayName(cls)} lap at ${escapeMd(track)}:** \`${formatLapTime(leader.lapTimeSeconds)}\` by **${escapeMd(leader.name)}**${beaten}`,
       });
     }
   }

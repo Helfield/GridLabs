@@ -12,6 +12,7 @@ import {
 } from "../db/queries";
 import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../views/coach-pages";
 import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
+import { promoteBestLaps } from "../db/promotions";
 
 export const coachRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -56,13 +57,24 @@ coachRoutes.get("/reference-laps", async (c) => {
   if (!user) return c.redirect("/login");
   const laps = await getPublicReferenceLaps();
   const synced = c.req.query("discord");
+  const published = c.req.query("published");
   const notice =
-    synced === undefined
-      ? null
-      : synced === "off"
-        ? "Discord leaderboard is off -- set DISCORD_LEADERBOARD_WEBHOOK_URL in Railway's Variables to turn it on."
-        : `Re-posted ${synced} track${synced === "1" ? "" : "s"} to the leaderboard channel.`;
+    published !== undefined
+      ? `Published ${published} new fastest lap${published === "1" ? "" : "s"}.`
+      : synced === undefined
+        ? null
+        : synced === "off"
+          ? "Discord leaderboard is off -- set DISCORD_LEADERBOARD_WEBHOOK_URL in Railway's Variables to turn it on."
+          : `Re-posted ${synced} track${synced === "1" ? "" : "s"} to the leaderboard channel.`;
   return c.html(referenceLapsPage(user, laps, { enabled: leaderboardEnabled(), notice }));
+});
+
+// Publish the fastest valid lap per track and car class as a reference
+// lap, from everything uploaded so far. Runs by itself on every upload
+// and at startup; this is the "do it now" button.
+coachRoutes.post("/promote-fastest", async (c) => {
+  const result = await promoteBestLaps();
+  return c.redirect(`/coach/reference-laps?published=${result.promoted}`);
 });
 
 // Rebuild every track's leaderboard message from scratch. The boards

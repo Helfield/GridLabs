@@ -26,8 +26,8 @@ libraryRoutes.get("/track/:track", async (c) => {
   const user = await getUserById(c.get("userId"));
   if (!user) return c.redirect("/login");
   const track = decodeURIComponent(c.req.param("track"));
-  const { laps, sampleData } = await getPublicLapsForTrack(track);
-  return c.html(trackDetailPage(user, track, laps, sampleData));
+  const { classes, sampleData } = await getPublicLapsForTrack(track);
+  return c.html(trackDetailPage(user, track, classes, sampleData));
 });
 
 // Serve the lap as a .json file the app's "Import lap" button accepts.

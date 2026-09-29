@@ -1,7 +1,7 @@
 import { db } from "./client";
 import { users, sessions } from "./schema";
 import { eq, and, isNotNull, inArray, asc } from "drizzle-orm";
-import { carClass } from "./queries";
+import { carClass, classRank } from "./queries";
 import { isValidLap } from "./promotions";
 
 /**
@@ -22,11 +22,7 @@ import { isValidLap } from "./promotions";
  */
 
 export const LEADERBOARD_SIZE = 5;
-export const UNCLASSIFIED = "UNCLASSIFIED";
-
-// Prototype classes first, as a timing screen would list them; anything
-// else alphabetical after; the unknowns last.
-const CLASS_ORDER = ["HYPERCAR", "LMH", "LMDH", "LMP2", "LMP3", "GTE", "GT3", "GT4"];
+export { classRank, classDisplayName } from "./queries";
 
 export type LeaderboardRow = {
   userId: number;
@@ -46,7 +42,12 @@ export async function listTracksWithLaps(): Promise<string[]> {
     .selectDistinct({ track: sessions.track })
     .from(sessions)
     .where(isNotNull(sessions.lapTimeSeconds));
-  return rows.map((r) => r.track).sort((a, b) => a.localeCompare(b));
+  // "Unknown Track" is what the app sends when the sim hasn't named the
+  // circuit yet -- not a place anyone can set a time.
+  return rows
+    .map((r) => r.track)
+    .filter((t) => t && t !== "Unknown Track")
+    .sort((a, b) => a.localeCompare(b));
 }
 
 export async function getTrackBoard(track: string, limit = LEADERBOARD_SIZE): Promise<TrackBoard> {
@@ -68,7 +69,10 @@ export async function getTrackBoard(track: string, limit = LEADERBOARD_SIZE): Pr
   const byClass = new Map<string, LeaderboardRow[]>();
   const placed = new Map<string, Set<number>>(); // class -> userIds already on it
   for (const s of candidates) {
-    const cls = carClass(s.car) ?? UNCLASSIFIED;
+    // No class means no fair board to put it on -- old app builds sent
+    // car names with no class prefix, and a few sent a garbled one.
+    const cls = carClass(s.car);
+    if (!cls) continue;
     const rows = byClass.get(cls) ?? [];
     if (rows.length >= limit) continue;
     const seen = placed.get(cls) ?? new Set<number>();
@@ -107,20 +111,6 @@ export async function getTrackBoard(track: string, limit = LEADERBOARD_SIZE): Pr
     .sort((a, b) => classRank(a.carClass) - classRank(b.carClass) || a.carClass.localeCompare(b.carClass));
 
   return { track, classes };
-}
-
-function classRank(cls: string): number {
-  if (cls === UNCLASSIFIED) return 1000;
-  const i = CLASS_ORDER.indexOf(cls);
-  return i === -1 ? 100 : i;
-}
-
-/** "GT3" stays "GT3"; the long ones read better in normal case. */
-export function classDisplayName(cls: string): string {
-  if (cls === UNCLASSIFIED) return "Unclassified";
-  if (cls === "HYPERCAR") return "Hypercar";
-  if (cls === "LMDH") return "LMDh";
-  return cls;
 }
 
 export function formatLapTime(seconds: number): string {
