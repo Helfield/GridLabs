@@ -70,11 +70,15 @@ export function isValidLap(lapTimeSeconds: number | null | undefined, data: unkn
 export const LIMIT_MARGIN_M = 2.0;
 export const LIMIT_MIN_SAMPLES = 2;
 export const LIMIT_SINGLE_SAMPLE_M = 4.0;
+// What the tyres were touching: all four wheels on grass, dirt or gravel
+// is off the circuit whether or not the session enforced track limits
+// (people switch them off in practice).
+export const LIMIT_WHEELS_OFF = 4;
 
 /**
  * Whether the car ran wide of the track for long enough to count as
- * breaking track limits. Needs the lateral fields, which only laps from
- * recent app builds carry; a lap without them can't be judged and passes.
+ * breaking track limits. Needs the lateral / wheels-off fields, which only laps
+ * from recent app builds carry; a lap without them can't be judged and passes.
  */
 export function hasTrackLimitViolation(data: unknown): boolean {
   const samples = (data as any)?.samples;
@@ -82,7 +86,18 @@ export function hasTrackLimitViolation(data: unknown): boolean {
 
   let run = 0;
   let previousBin: number | null = null;
+  let offRun = 0;
+  let previousOffBin: number | null = null;
   for (const bin of Object.keys(samples).map(Number).filter(Number.isFinite).sort((a, b) => a - b)) {
+    const wheelsOff = samples[bin]?.wheels_off;
+    if (typeof wheelsOff === "number" && wheelsOff >= LIMIT_WHEELS_OFF) {
+      offRun = previousOffBin === bin - 1 ? offRun + 1 : 1;
+      previousOffBin = bin;
+      if (offRun >= LIMIT_MIN_SAMPLES) return true;
+    } else {
+      offRun = 0;
+    }
+
     const lateral = samples[bin]?.path_lateral;
     const edge = samples[bin]?.track_edge;
     if (typeof lateral !== "number" || typeof edge !== "number") {
