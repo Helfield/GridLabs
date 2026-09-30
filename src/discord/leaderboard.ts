@@ -4,6 +4,7 @@ import { db } from "../db/client";
 import { discordLeaderboardPosts } from "../db/schema";
 import { getTrackBoard, listTracksWithLaps, formatLapTime, type TrackBoard } from "../db/leaderboard";
 import { classDisplayName } from "../classes";
+import { siteUrl } from "../siteUrl";
 import { renderBoardPng, type BoardTrack } from "./board-image";
 
 /**
@@ -31,7 +32,7 @@ import { renderBoardPng, type BoardTrack } from "./board-image";
  * syncTrackLeaderboard() and log.
  */
 
-const SITE_URL = (process.env.SITE_URL ?? "https://gridlabs.com").replace(/\/+$/, "");
+const SITE_URL = siteUrl();
 const COLOUR = 0xb14bff; // theme "fastest" purple
 
 // Bump when the picture's design changes, so the board is redrawn once
@@ -43,10 +44,14 @@ const BOARD_DESIGN = 1;
 // those still there are cleaned up on the first run -- see publish().)
 const BOARD_KEY = "__board__";
 
-// One row per track+class holding the id of its latest "new fastest lap"
-// announcement, so the next one can replace it instead of piling up when
-// someone is stringing together records. Keyed `__ann__:<track>||<class>`.
+// One row per DRIVER holding the id of their latest "new fastest lap"
+// announcement, so the next one replaces it instead of piling up when
+// someone is stringing records together -- whether on one track, across
+// classes, or round several circuits. Keyed `__ann__:user:<id>`. (An
+// earlier version kept one per track+class, which still stacked up for a
+// driver working through several; those rows are cleaned up below.)
 const ANN_PREFIX = "__ann__:";
+const ANN_USER_PREFIX = "__ann__:user:";
 
 type Leader = { userId: number; name: string; lapTimeSeconds: number };
 type Leaders = Record<string, Leader>; // key: `${track}||${class}`
@@ -138,7 +143,9 @@ async function publish(repost: boolean, announce = true): Promise<void> {
 
   const rows = await db.query.discordLeaderboardPosts.findMany();
   const board = rows.find((r) => r.track === BOARD_KEY);
-  const announcements = new Map(rows.filter((r) => r.track.startsWith(ANN_PREFIX)).map((r) => [r.track, r]));
+  const announcements = new Map(rows.filter((r) => r.track.startsWith(ANN_USER_PREFIX)).map((r) => [r.track, r]));
+  // Announcements tracked the old way (per track+class): take them down once.
+  const oldAnnouncements = rows.filter((r) => r.track.startsWith(ANN_PREFIX) && !r.track.startsWith(ANN_USER_PREFIX));
   const legacy = rows.filter((r) => r.track !== BOARD_KEY && !r.track.startsWith(ANN_PREFIX));
 
   // What the records were before this update, to spot a beaten one. The
@@ -188,6 +195,13 @@ async function publish(repost: boolean, announce = true): Promise<void> {
     await db.delete(discordLeaderboardPosts).where(eq(discordLeaderboardPosts.track, old.track));
   }
 
+  for (const old of oldAnnouncements) {
+    await deleteMessage(url, old.messageId).catch((err) =>
+      console.error("Couldn't delete an old-style announcement:", err),
+    );
+    await db.delete(discordLeaderboardPosts).where(eq(discordLeaderboardPosts.track, old.track));
+  }
+
   // Announce records that were beaten -- and only those.
   if (announce && !unchanged && before) {
     for (const [key, now] of Object.entries(leaders)) {
@@ -208,17 +222,20 @@ async function publish(repost: boolean, announce = true): Promise<void> {
         null,
       );
 
-      // Replace, don't stack: the previous announcement for this same
-      // track and class is now out of date (its record has just been
-      // beaten), so take it down. New first, old second, as with the board.
-      const annKey = ANN_PREFIX + key;
+      // Replace, don't stack: this driver's previous announcement is now
+      // out of date (they've just set a newer record), so take it down.
+      // New first, old second, as with the board.
+      const annKey = ANN_USER_PREFIX + now.userId;
       const previous = announcements.get(annKey);
       if (previous) {
         await deleteMessage(url, previous.messageId).catch((err) =>
-          console.error(`Couldn't delete the previous announcement for ${track} ${cls}:`, err),
+          console.error(`Couldn't delete the previous announcement for ${now.name}:`, err),
         );
       }
       if (posted) {
+        // Remember it in memory too, so a second record by the same driver
+        // in this very pass replaces this one rather than stacking.
+        announcements.set(annKey, { track: annKey, messageId: posted } as (typeof rows)[number]);
         const stamp = new Date();
         await db
           .insert(discordLeaderboardPosts)

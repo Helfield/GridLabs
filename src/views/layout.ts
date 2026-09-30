@@ -19,16 +19,18 @@
  * type scale and timing-tower alignment.
  */
 
+import { siteUrl } from "../siteUrl";
+
 export type NavUser = {
   name: string;
   role: string;
   discordAvatarUrl: string | null;
 } | null;
 
-// Falls back to gridlabs.com if SITE_URL isn't set -- only used to build
+// Resolved by siteUrl() (SITE_URL, else the site's own address) -- only used to build
 // absolute URLs for og:image/og:url, which social crawlers require
 // (relative paths in OG tags are silently ignored by most of them).
-const SITE_URL = (process.env.SITE_URL ?? "https://gridlabs.com").replace(/\/+$/, "");
+const SITE_URL = siteUrl();
 const DEFAULT_DESCRIPTION =
   "Telemetry coaching for Le Mans Ultimate. Compare your lap against a reference corner by corner and see exactly where the time goes.";
 
