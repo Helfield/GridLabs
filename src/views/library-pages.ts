@@ -1,6 +1,7 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime } from "./components";
 import { classDisplayName } from "../classes";
+import { quarterTurns, rotatePoint } from "../mapOrientation";
 
 type Nav = NonNullable<NavUser>;
 
@@ -43,7 +44,7 @@ export type LibraryLap = {
  */
 const BRAKE_ON = 0.15;
 
-function layoutSvg(data: any, width: number, height: number, showBraking: boolean): string {
+function layoutSvg(data: any, track: string, width: number, height: number, showBraking: boolean): string {
   const samples = data?.samples;
   if (!samples || typeof samples !== "object") return placeholderSvg(width, height);
 
@@ -55,6 +56,15 @@ function layoutSvg(data: any, width: number, height: number, showBraking: boolea
     .filter((s: any) => typeof s?.world_x === "number" && typeof s?.world_z === "number");
 
   if (points.length < 3) return placeholderSvg(width, height);
+
+  // Same way up as the in-game map (see mapOrientation.ts).
+  const turns = quarterTurns(track);
+  const turned = points.map((p: any) => {
+    const [x, z] = rotatePoint(p.world_x, p.world_z, turns);
+    return { ...p, world_x: x, world_z: z };
+  });
+  points.length = 0;
+  points.push(...turned);
 
   const xs = points.map((p: any) => p.world_x);
   const zs = points.map((p: any) => p.world_z);
@@ -109,7 +119,7 @@ ${tracks
   .map(
     (t) => `
   <a class="tcard" href="/library/track/${encodeURIComponent(t.track)}">
-    <div class="tcard__map">${layoutSvg(t.sampleData, 300, 180, false)}</div>
+    <div class="tcard__map">${layoutSvg(t.sampleData, t.track, 300, 180, false)}</div>
     <div class="tcard__body">
       <div class="tcard__name">${escapeHtml(t.track)}</div>
       <div class="tcard__classes">
@@ -195,7 +205,7 @@ ${c.laps
   <section class="panel">
     <div class="panel__head"><h2>Layout</h2><span class="tag">From lap data</span></div>
     <div class="panel__body">
-      ${layoutSvg(sampleData, 420, 320, true)}
+      ${layoutSvg(sampleData, track, 420, 320, true)}
       <div class="legend" style="margin-top:14px">
         <span><i style="background:#ff3b3b"></i>Braking</span>
         <span><i style="background:var(--fastest)"></i>Off the brakes</span>

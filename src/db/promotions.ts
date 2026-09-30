@@ -50,7 +50,57 @@ export function isValidLap(lapTimeSeconds: number | null | undefined, data: unkn
   if (!isPlausibleLapTime(lapTimeSeconds)) return false;
   if (hasStandstillSample(data)) return false;
   if (hasCutSegment(data)) return false;
+  if (hasTrackLimitViolation(data)) return false;
   return true;
+}
+
+// Track limits, from where the car was against where the road ends. Each
+// sample records how far the car was from the centre of the track
+// (path_lateral) and how far the edge is on that side (track_edge); the
+// difference is how far past the edge the car's CENTRE was. A car is
+// about two metres wide, so a centre more than a metre past the edge has
+// all four wheels outside it. The thresholds sit well beyond that on
+// purpose: this can't reproduce the sim's own ruling, only catch the
+// clear cases, and wrongly throwing out a clean lap is worse than
+// letting a marginal one through (measured on real laps: clean laps peak
+// 0.4 m past the edge, kerb-heavy ones 1-2 m, off-track laps 4-20 m).
+// Samples are 5 m apart, so LIMIT_MIN_SAMPLES in a row is a real
+// excursion rather than a wobble on the line. Keep in step with
+// lap_history.py in the desktop app.
+export const LIMIT_MARGIN_M = 2.0;
+export const LIMIT_MIN_SAMPLES = 2;
+export const LIMIT_SINGLE_SAMPLE_M = 4.0;
+
+/**
+ * Whether the car ran wide of the track for long enough to count as
+ * breaking track limits. Needs the lateral fields, which only laps from
+ * recent app builds carry; a lap without them can't be judged and passes.
+ */
+export function hasTrackLimitViolation(data: unknown): boolean {
+  const samples = (data as any)?.samples;
+  if (!samples || typeof samples !== "object") return false;
+
+  let run = 0;
+  let previousBin: number | null = null;
+  for (const bin of Object.keys(samples).map(Number).filter(Number.isFinite).sort((a, b) => a - b)) {
+    const lateral = samples[bin]?.path_lateral;
+    const edge = samples[bin]?.track_edge;
+    if (typeof lateral !== "number" || typeof edge !== "number") {
+      run = 0;
+      previousBin = null;
+      continue;
+    }
+    const excess = Math.abs(lateral) - Math.abs(edge);
+    if (excess >= LIMIT_SINGLE_SAMPLE_M) return true;
+    if (excess > LIMIT_MARGIN_M) {
+      run = previousBin === bin - 1 ? run + 1 : 1;
+      if (run >= LIMIT_MIN_SAMPLES) return true;
+    } else {
+      run = 0;
+    }
+    previousBin = bin;
+  }
+  return false;
 }
 
 // A lap is stored one sample per 5 m of LAP DISTANCE -- how far round

@@ -1,5 +1,6 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime, sectorTime, delta, fullDate, timingClass, lapTimeChart } from "./components";
+import { quarterTurns, rotatePoint } from "../mapOrientation";
 
 type Nav = NonNullable<NavUser>;
 
@@ -339,9 +340,14 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
     : null;
 
   // --- geometry for the map ---
-  const located = points.filter((p) => p.x !== null && p.z !== null);
-  const xs = located.map((p) => p.x as number);
-  const zs = located.map((p) => p.z as number);
+  // Same way up as the in-game map (see mapOrientation.ts).
+  const mapTurns = quarterTurns(session.track);
+  const turnedXZ = points.map((p) =>
+    p.x === null || p.z === null ? null : rotatePoint(p.x, p.z, mapTurns),
+  );
+  const located = turnedXZ.filter((p): p is [number, number] => p !== null);
+  const xs = located.map((p) => p[0]);
+  const zs = located.map((p) => p[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const spanX = maxX - minX || 1, spanZ = maxZ - minZ || 1;
@@ -350,11 +356,11 @@ function telemetrySection(session: SessionRow, reference: ReferenceRow): string 
   const offX = (MAP_W - spanX * mapScale) / 2;
   const offY = (MAP_H - spanZ * mapScale) / 2;
 
-  const mapXY = points.map((p) => {
-    if (p.x === null || p.z === null) return null;
+  const mapXY = turnedXZ.map((p) => {
+    if (p === null) return null;
     return [
-      offX + (p.x - minX) * mapScale,
-      MAP_H - (offY + (p.z - minZ) * mapScale),
+      offX + (p[0] - minX) * mapScale,
+      MAP_H - (offY + (p[1] - minZ) * mapScale),
     ] as [number, number];
   });
 
