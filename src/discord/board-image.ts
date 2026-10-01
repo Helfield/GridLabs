@@ -14,11 +14,12 @@ import { initWasm, Resvg } from "@resvg/resvg-wasm";
  * The fonts are bundled beside this file so the result is identical on
  * any machine, and nothing here touches the network.
  *
- * Layout: a header, then one card per track in two columns (filled down
- * the left column and then the right, so the tracks still read
- * alphabetically), each card listing the fastest lap in every car class
- * as [class chip] [time] [driver]. Classes are colour-coded and never
- * ranked against one another.
+ * Layout: a wide table. One row per track (alphabetical), one column per
+ * car class, each cell holding the fastest lap's time with the driver
+ * under it. Classes are colour-coded and never ranked against one
+ * another; a class nobody has set a time in at a track is left as a dash.
+ * Wide rather than tall because Discord shows a chat image at roughly
+ * 550x400 -- a tall list shrinks to nothing, a wide one stays readable.
  */
 
 export type BoardRow = { classKey: string; classLabel: string; time: string; driver: string };
@@ -52,22 +53,17 @@ const CLASS_COLOURS: Record<string, string> = {
 };
 const FALLBACK_CLASS_COLOUR = "#8492A6";
 
-// ------------------------------------------------------------- geometry
-const W = 1200;
-const MARGIN = 44;
-const GAP = 24;
-const COL_W = (W - MARGIN * 2 - GAP) / 2;
-const HEADER_H = 190;
-const FOOTER_H = 84;
-const CARD_PAD = 24;
-const CARD_TITLE_H = 66;
-const ROW_H = 60;
-const CARD_BOTTOM = 14;
-const CHIP_W = 138;
+/** Left-to-right order of the class columns; anything else follows alphabetically. */
+const CLASS_ORDER = ["HYPER", "HYPERCAR", "LMH", "LMDH", "LMP2", "LMP2_ELMS", "LMP3", "GTE", "GT3", "GT4"];
 
-function cardHeight(rows: number): number {
-  return CARD_TITLE_H + Math.max(1, rows) * ROW_H + CARD_BOTTOM;
-}
+// ------------------------------------------------------------- geometry
+const W = 2000;
+const MARGIN = 56;
+const HEADER_H = 178;
+const FOOTER_H = 84;
+const TRACK_COL_W = 400;
+const HEAD_ROW_H = 74; // the class-chip header row
+const ROW_H = 84;
 
 // ---------------------------------------------------------------- fonts
 const FONT_FILES = [
@@ -133,26 +129,18 @@ export async function renderBoardPng(tracks: BoardTrack[], updatedAt: Date): Pro
 }
 
 export function buildSvg(tracks: BoardTrack[], updatedAt: Date): string {
-  // Newspaper columns: fill the left column to about half the total
-  // height, then the right -- so alphabetical order reads down, not across.
-  const heights = tracks.map((t) => cardHeight(t.rows.length) + GAP);
-  const total = heights.reduce((a, b) => a + b, 0);
-  const left: number[] = [];
-  const right: number[] = [];
-  let used = 0;
-  tracks.forEach((_t, i) => {
-    // Put a card left while doing so keeps the left column no more than
-    // half a card past the midpoint.
-    if (used + heights[i] / 2 <= total / 2 || left.length === 0) {
-      left.push(i);
-      used += heights[i];
-    } else {
-      right.push(i);
-    }
+  // Only the classes somebody has actually set a time in.
+  const labels = new Map<string, string>();
+  for (const t of tracks) for (const r of t.rows) if (!labels.has(r.classKey)) labels.set(r.classKey, r.classLabel);
+  const classes = [...labels.keys()].sort((a, b) => {
+    const ia = CLASS_ORDER.indexOf(a);
+    const ib = CLASS_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
   });
 
-  const columnHeight = (idx: number[]) => idx.reduce((a, i) => a + heights[i], 0);
-  const bodyH = tracks.length ? Math.max(columnHeight(left), columnHeight(right)) - GAP : 200;
+  const tableW = W - MARGIN * 2;
+  const colW = classes.length ? (tableW - TRACK_COL_W) / classes.length : 0;
+  const bodyH = tracks.length ? HEAD_ROW_H + tracks.length * ROW_H : 200;
   const H = HEADER_H + bodyH + FOOTER_H;
 
   const parts: string[] = [];
@@ -181,25 +169,16 @@ export function buildSvg(tracks: BoardTrack[], updatedAt: Date): string {
 <rect x="${bx + 22}" y="28" width="7" height="32" rx="1.5" fill="url(#bar)"/>`);
   parts.push(`<text x="${bx + 44}" y="60" font-family="Barlow Condensed" font-weight="700" font-size="36" letter-spacing="3.5" fill="${C.text}">GRIDLABS</text>`);
   parts.push(`<text x="${W - MARGIN}" y="58" text-anchor="end" font-family="IBM Plex Mono" font-weight="500" font-size="17" letter-spacing="2.5" fill="${C.dim}">LE MANS ULTIMATE</text>`);
-  parts.push(`<text x="${MARGIN}" y="140" font-family="Barlow Condensed" font-weight="700" font-size="84" letter-spacing="1.5" fill="${C.text}">FASTEST <tspan fill="${C.fastest}">LAPS</tspan></text>`);
-  parts.push(`<text x="${W - MARGIN}" y="138" text-anchor="end" font-family="IBM Plex Mono" font-weight="500" font-size="17" letter-spacing="0.6" fill="${C.muted}">
-    <tspan x="${W - MARGIN}" dy="0">Best valid lap per track</tspan><tspan x="${W - MARGIN}" dy="26">Each car class ranked on its own</tspan>
+  parts.push(`<text x="${MARGIN}" y="146" font-family="Barlow Condensed" font-weight="700" font-size="88" letter-spacing="1.5" fill="${C.text}">FASTEST <tspan fill="${C.fastest}">LAPS</tspan></text>`);
+  parts.push(`<text x="${W - MARGIN}" y="130" text-anchor="end" font-family="IBM Plex Mono" font-weight="500" font-size="18" letter-spacing="0.6" fill="${C.muted}">
+    <tspan x="${W - MARGIN}" dy="0">Best valid lap per track</tspan><tspan x="${W - MARGIN}" dy="28">Each car class ranked on its own</tspan>
   </text>`);
-  parts.push(`<line x1="${MARGIN}" y1="${HEADER_H - 8}" x2="${W - MARGIN}" y2="${HEADER_H - 8}" stroke="${C.line}" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${MARGIN}" y1="${HEADER_H - 6}" x2="${W - MARGIN}" y2="${HEADER_H - 6}" stroke="${C.line}" stroke-width="1.5"/>`);
 
-  // ---- cards
-  const drawColumn = (indices: number[], x: number) => {
-    let y = HEADER_H + 14;
-    for (const i of indices) {
-      parts.push(card(tracks[i], x, y));
-      y += heights[i];
-    }
-  };
   if (tracks.length === 0) {
     parts.push(`<text x="${W / 2}" y="${HEADER_H + 100}" text-anchor="middle" font-family="Barlow Condensed" font-weight="700" font-size="34" letter-spacing="2" fill="${C.muted}">NO VALID LAPS YET</text>`);
   } else {
-    drawColumn(left, MARGIN);
-    drawColumn(right, MARGIN + COL_W + GAP);
+    parts.push(table(tracks, classes, labels, colW));
   }
 
   // ---- footer
@@ -207,46 +186,74 @@ export function buildSvg(tracks: BoardTrack[], updatedAt: Date): string {
     day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
     hour12: false, timeZone: "UTC",
   });
-  parts.push(`<text x="${W / 2}" y="${H - 34}" text-anchor="middle" font-family="IBM Plex Mono" font-weight="500" font-size="15" letter-spacing="0.8" fill="${C.dim}">Track cuts and disqualified laps excluded  ·  updated ${esc(stamp)} UTC</text>`);
+  parts.push(`<text x="${W / 2}" y="${H - 34}" text-anchor="middle" font-family="IBM Plex Mono" font-weight="500" font-size="16" letter-spacing="0.8" fill="${C.dim}">Track cuts and disqualified laps excluded  ·  updated ${esc(stamp)} UTC</text>`);
   parts.push(`</svg>`);
   return parts.join("\n");
 }
 
-function card(t: BoardTrack, x: number, y: number): string {
-  const h = cardHeight(t.rows.length);
+/** Split a long track name over two lines at the space nearest its middle. */
+function wrapTitle(title: string): string[] {
+  if (title.length <= 21) return [title];
+  const mid = title.length / 2;
+  let best = -1;
+  for (let i = 0; i < title.length; i++) {
+    if (title[i] === " " && (best < 0 || Math.abs(i - mid) < Math.abs(best - mid))) best = i;
+  }
+  return best < 0 ? [title] : [title.slice(0, best), title.slice(best + 1)];
+}
+
+function table(tracks: BoardTrack[], classes: string[], labels: Map<string, string>, colW: number): string {
   const out: string[] = [];
-  out.push(`<rect x="${x}" y="${y}" width="${COL_W}" height="${h}" rx="16" fill="${C.panel}" stroke="${C.line}" stroke-width="1.5"/>`);
-  out.push(`<rect x="${x}" y="${y + 18}" width="5" height="${h - 36}" rx="2.5" fill="url(#bar)"/>`);
+  const x0 = MARGIN;
+  const tableW = W - MARGIN * 2;
+  const top = HEADER_H + 10;
 
-  const title = clean(t.track).toUpperCase();
-  const titleW = COL_W - CARD_PAD * 2 - 6;
-  const titleSize = fit(title, titleW, 34, 22, 0.5);
-  out.push(`<text x="${x + CARD_PAD + 6}" y="${y + 43}" font-family="Barlow Condensed" font-weight="700" font-size="${titleSize.toFixed(1)}" letter-spacing="1" fill="${C.text}">${esc(title)}</text>`);
-  out.push(`<line x1="${x + CARD_PAD + 6}" y1="${y + CARD_TITLE_H - 6}" x2="${x + COL_W - CARD_PAD}" y2="${y + CARD_TITLE_H - 6}" stroke="${C.line}" stroke-width="1"/>`);
+  // ---- class header chips
+  classes.forEach((cls, ci) => {
+    const colour = CLASS_COLOURS[cls] ?? FALLBACK_CLASS_COLOUR;
+    const label = clean(labels.get(cls) ?? cls).toUpperCase();
+    const cx = x0 + TRACK_COL_W + ci * colW + colW / 2;
+    const chipW = Math.min(colW - 28, 230);
+    out.push(`<rect x="${cx - chipW / 2}" y="${top + 12}" width="${chipW}" height="46" rx="12" fill="${colour}" fill-opacity="0.16" stroke="${colour}" stroke-opacity="0.8" stroke-width="2"/>`);
+    out.push(`<text x="${cx}" y="${top + 45}" text-anchor="middle" font-family="Barlow Condensed" font-weight="700" font-size="${fit(label, chipW - 24, 30, 18, 0.56).toFixed(1)}" letter-spacing="1.5" fill="${colour}">${esc(label)}</text>`);
+  });
+  out.push(`<text x="${x0 + 24}" y="${top + 45}" font-family="IBM Plex Mono" font-weight="500" font-size="16" letter-spacing="2.5" fill="${C.dim}">TRACK</text>`);
 
-  t.rows.forEach((r, i) => {
-    const ry = y + CARD_TITLE_H + i * ROW_H;
-    const colour = CLASS_COLOURS[r.classKey] ?? FALLBACK_CLASS_COLOUR;
-    const cx = x + CARD_PAD + 6;
-    const label = clean(r.classLabel).toUpperCase();
-
-    if (i > 0) {
-      out.push(`<line x1="${cx}" y1="${ry}" x2="${x + COL_W - CARD_PAD}" y2="${ry}" stroke="${C.lineSoft}" stroke-width="1"/>`);
+  // ---- rows
+  const bodyTop = top + HEAD_ROW_H;
+  out.push(`<rect x="${x0}" y="${bodyTop}" width="${tableW}" height="${tracks.length * ROW_H}" rx="14" fill="${C.panel}" stroke="${C.line}" stroke-width="1.5"/>`);
+  tracks.forEach((t, ri) => {
+    const ry = bodyTop + ri * ROW_H;
+    if (ri % 2 === 1) {
+      out.push(`<rect x="${x0 + 1}" y="${ry}" width="${tableW - 2}" height="${ROW_H}" fill="${C.panel2}" fill-opacity="0.55"/>`);
     }
-    out.push(`<rect x="${cx}" y="${ry + 12}" width="${CHIP_W}" height="36" rx="9" fill="${colour}" fill-opacity="0.14" stroke="${colour}" stroke-opacity="0.7" stroke-width="1.5"/>`);
-    out.push(`<text x="${cx + CHIP_W / 2}" y="${ry + 37}" text-anchor="middle" font-family="Barlow Condensed" font-weight="700" font-size="${fit(label, CHIP_W - 16, 23, 15, 0.56).toFixed(1)}" letter-spacing="1.2" fill="${colour}">${esc(label)}</text>`);
+    if (ri > 0) out.push(`<line x1="${x0 + 1}" y1="${ry}" x2="${x0 + tableW - 1}" y2="${ry}" stroke="${C.lineSoft}" stroke-width="1"/>`);
 
-    const timeX = cx + CHIP_W + 20;
-    out.push(`<text x="${timeX}" y="${ry + 40}" font-family="IBM Plex Mono" font-weight="600" font-size="32" fill="${C.text}">${esc(r.time)}</text>`);
+    // track name, over two lines when it is long
+    const lines = wrapTitle(clean(t.track).toUpperCase());
+    // One size for every name so the column reads evenly; only a name too
+    // long for the column at that size is shrunk.
+    const size = Math.min(...lines.map((l) => fit(l, TRACK_COL_W - 48, 30, 20, 0.5)));
+    lines.forEach((line, li) => {
+      const baseline = lines.length === 1
+        ? ry + ROW_H / 2 + size * 0.34
+        : ry + ROW_H / 2 - 6 + li * (size + 2) + size * 0.3;
+      out.push(`<text x="${x0 + 24}" y="${baseline.toFixed(1)}" font-family="Barlow Condensed" font-weight="700" font-size="${size.toFixed(1)}" letter-spacing="0.8" fill="${C.text}">${esc(line)}</text>`);
+    });
 
-    // The driver gets whatever is left after the time (a mono glyph at 32px
-    // is ~19.5px wide; times run to 8 characters) and shrinks to fit, so a
-    // long name can never run into the number beside it.
-    const driverRight = x + COL_W - CARD_PAD;
-    const driverWidth = driverRight - (timeX + 8 * 19.5 + 16);
-    const driver = ellipsise(clean(r.driver), 22);
-    const driverSize = fit(driver, driverWidth, 27, 17, 0.44);
-    out.push(`<text x="${driverRight}" y="${ry + 39}" text-anchor="end" font-family="Barlow Condensed" font-weight="600" font-size="${driverSize.toFixed(1)}" fill="${C.muted}">${esc(driver)}</text>`);
+    // one cell per class
+    classes.forEach((cls, ci) => {
+      const cx = x0 + TRACK_COL_W + ci * colW + colW / 2;
+      const row = t.rows.find((r) => r.classKey === cls);
+      if (!row) {
+        out.push(`<text x="${cx}" y="${ry + ROW_H / 2 + 8}" text-anchor="middle" font-family="IBM Plex Mono" font-weight="500" font-size="26" fill="${C.line}">—</text>`);
+        return;
+      }
+      const driver = ellipsise(clean(row.driver), 22);
+      const driverSize = fit(driver, colW - 36, 24, 16, 0.44);
+      out.push(`<text x="${cx}" y="${ry + 42}" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="33" fill="${C.text}">${esc(row.time)}</text>`);
+      out.push(`<text x="${cx}" y="${ry + 69}" text-anchor="middle" font-family="Barlow Condensed" font-weight="600" font-size="${driverSize.toFixed(1)}" fill="${C.muted}">${esc(driver)}</text>`);
+    });
   });
   return out.join("\n");
 }
