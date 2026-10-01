@@ -6,7 +6,10 @@ import {
   getTrackSummaries,
   getPublicLapsForTrack,
   getReferenceLapForDownload,
+  getPublicReferenceLapDetail,
 } from "../db/queries";
+import { lapChecks } from "../db/promotions";
+import { referenceLapPage } from "../views/reference-lap-page";
 import { trackLibraryPage, trackDetailPage } from "../views/library-pages";
 
 export const libraryRoutes = new Hono<{ Variables: AppVariables }>();
@@ -28,6 +31,23 @@ libraryRoutes.get("/track/:track", async (c) => {
   const track = decodeURIComponent(c.req.param("track"));
   const { classes, sampleData } = await getPublicLapsForTrack(track);
   return c.html(trackDetailPage(user, track, classes, sampleData));
+});
+
+// A reference lap, opened up: the same telemetry breakdown a driver sees
+// for their own laps, plus the checks it passes, for ANY signed-in member
+// (not only coaches) -- so a lap can be studied, or doubted, without
+// downloading it first.
+libraryRoutes.get("/lap/:id", async (c) => {
+  const user = await getUserById(c.get("userId"));
+  if (!user) return c.redirect("/login");
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.text("Invalid lap id.", 400);
+
+  const detail = await getPublicReferenceLapDetail(id);
+  if (!detail) return c.text("Reference lap not found.", 404);
+
+  const checks = lapChecks(detail.lap.lapTimeSeconds, detail.lap.data);
+  return c.html(referenceLapPage(user, detail, checks));
 });
 
 // Serve the lap as a .json file the app's "Import lap" button accepts.

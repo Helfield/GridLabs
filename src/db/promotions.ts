@@ -169,6 +169,53 @@ export function hasCutSegment(data: unknown): boolean {
   return false;
 }
 
+export type LapCheck = { label: string; status: "pass" | "fail" | "unknown"; note: string };
+
+/**
+ * The same tests isValidLap applies, itemised so a person can see WHICH
+ * one a lap passes or fails -- shown on a reference lap's page so anyone
+ * can judge whether a lap is clean. "unknown" means the lap doesn't carry
+ * the data that test needs (older app builds), which is not a pass.
+ */
+export function lapChecks(lapTimeSeconds: number | null | undefined, data: unknown): LapCheck[] {
+  const samples = (data as any)?.samples;
+  const sampleList: any[] = samples && typeof samples === "object" ? Object.values(samples) : [];
+  const hasPositions = sampleList.some((s) => typeof s?.world_x === "number" && typeof s?.world_z === "number");
+  const hasLimitData = sampleList.some(
+    (s) => typeof s?.wheels_off === "number" || (typeof s?.path_lateral === "number" && typeof s?.track_edge === "number"),
+  );
+  const hasSpeeds = sampleList.some((s) => typeof s?.speed_kph === "number");
+
+  const checks: LapCheck[] = [];
+  checks.push(
+    isPlausibleLapTime(lapTimeSeconds)
+      ? { label: "Real flying lap", status: "pass", note: "A plausible lap time, not an out-lap or a timing glitch." }
+      : { label: "Real flying lap", status: "fail", note: "The lap time is implausibly short or long." },
+  );
+  checks.push(
+    !hasSpeeds
+      ? { label: "No stops", status: "unknown", note: "No speed data on this lap." }
+      : hasStandstillSample(data)
+        ? { label: "No stops", status: "fail", note: "The car came to a standstill during the lap (a spin, or an out-lap or in-lap)." }
+        : { label: "No stops", status: "pass", note: "The car never stopped." },
+  );
+  checks.push(
+    !hasPositions
+      ? { label: "No shortcuts", status: "unknown", note: "No position data on this lap." }
+      : hasCutSegment(data)
+        ? { label: "No shortcuts", status: "fail", note: "Lap distance jumped ahead of where the car really was: a chicane or corner was skipped." }
+        : { label: "No shortcuts", status: "pass", note: "Every stretch of the lap was actually driven." },
+  );
+  checks.push(
+    !hasLimitData
+      ? { label: "Track limits", status: "unknown", note: "Recorded before track-limit data was captured, so this can't be checked." }
+      : hasTrackLimitViolation(data)
+        ? { label: "Track limits", status: "fail", note: "The car ran well off the track: all four wheels on grass or gravel, or far beyond the edge." }
+        : { label: "Track limits", status: "pass", note: "The car stayed on or near the track throughout." },
+  );
+  return checks;
+}
+
 /**
  * Whether a lap carries enough telemetry to be driven against. A
  * reference lap is a file the app loads and follows around the circuit,

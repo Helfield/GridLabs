@@ -159,6 +159,41 @@ export async function getReferenceLapForDownload(id: number, userId: number) {
   return lap;
 }
 
+/**
+ * One public reference lap for its own page, with who set it and the
+ * fastest lap in the same car class to compare it against (null when this
+ * IS the fastest). Public laps only: anyone signed in may open these.
+ */
+export async function getPublicReferenceLapDetail(id: number) {
+  const lap = await db.query.referenceLaps.findFirst({
+    where: and(eq(referenceLaps.id, id), eq(referenceLaps.isPublic, true)),
+  });
+  if (!lap) return null;
+
+  const owner = await db.query.users.findFirst({ where: eq(users.id, lap.ownerId), columns: { name: true } });
+
+  const sameTrack = await db.query.referenceLaps.findMany({
+    where: and(eq(referenceLaps.isPublic, true), eq(referenceLaps.track, lap.track)),
+    columns: { id: true, car: true, lapTimeSeconds: true },
+  });
+  const cls = carClass(lap.car) ?? UNCLASSIFIED;
+  const inClass = sameTrack
+    .filter((l) => (carClass(l.car) ?? UNCLASSIFIED) === cls && l.lapTimeSeconds !== null)
+    .sort((a, b) => (a.lapTimeSeconds as number) - (b.lapTimeSeconds as number));
+  const rank = inClass.findIndex((l) => l.id === lap.id) + 1;
+
+  const fastestId = inClass[0]?.id;
+  const fastest =
+    fastestId && fastestId !== lap.id
+      ? await db.query.referenceLaps.findFirst({
+          where: eq(referenceLaps.id, fastestId),
+          columns: { label: true, car: true, carDisplay: true, lapTimeSeconds: true, data: true },
+        })
+      : null;
+
+  return { lap, ownerName: owner?.name ?? null, carClass: cls, rank: rank || null, classSize: inClass.length, fastest: fastest ?? null };
+}
+
 export async function getTrackSummaries() {
   const laps = await db.query.referenceLaps.findMany({
     where: eq(referenceLaps.isPublic, true),

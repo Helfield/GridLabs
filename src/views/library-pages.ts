@@ -175,10 +175,10 @@ ${c.laps
   .map(
     (l, i) => `
         <tr>
-          <td><div class="driver__name">${escapeHtml(l.label)}${i === 0 ? ` <span class="tag tag--fastest">Fastest</span>` : ""}</div></td>
+          <td><div class="driver__name"><a class="lap-link" href="/library/lap/${l.id}">${escapeHtml(l.label)}</a>${i === 0 ? ` <span class="tag tag--fastest">Fastest</span>` : ""}</div></td>
           <td style="color:var(--muted)">${escapeHtml(l.carDisplay || l.car)}</td>
           <td class="num col-r laptime ${i === 0 ? "t-fastest" : ""}">${escapeHtml(lapTime(l.lapTimeSeconds))}${i === 0 ? "" : `<div class="hint" style="margin:2px 0 0">+${((l.lapTimeSeconds ?? 0) - (c.laps[0].lapTimeSeconds ?? 0)).toFixed(3)}</div>`}</td>
-          <td class="col-r"><a class="btn btn--ghost btn--sm" href="/library/lap/${l.id}/download">Download</a></td>
+          <td class="col-r" style="white-space:nowrap"><a class="btn btn--ghost btn--sm" href="/library/lap/${l.id}">View</a> <a class="btn btn--ghost btn--sm" href="/library/lap/${l.id}/download">Download</a></td>
         </tr>`,
   )
   .join("")}
@@ -200,7 +200,7 @@ ${c.laps
 <div class="grid-2">
   <div class="stack">
     ${classPanels}
-    <p class="hint">Download a lap, then in the app click <strong>Import lap</strong> (top right) and choose the file. It'll appear in the <strong>Driving against</strong> dropdown for this track.</p>
+    <p class="hint">Click a lap to see its full breakdown, or download it, then in the app click <strong>Import lap</strong> (top right) and choose the file. It'll appear in the <strong>Driving against</strong> dropdown for this track.</p>
   </div>
   <section class="panel">
     <div class="panel__head"><h2>Layout</h2><span class="tag">From lap data</span></div>
@@ -219,6 +219,8 @@ ${LIBRARY_CSS}`;
 
 const LIBRARY_CSS = `
 <style>
+.lap-link{color:inherit;text-decoration:none}
+.lap-link:hover{color:var(--fastest);text-decoration:underline}
 .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:18px}
 .tcard{
   display:block;text-decoration:none;background:var(--panel);border:1px solid var(--line);

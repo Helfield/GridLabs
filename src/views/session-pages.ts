@@ -84,7 +84,7 @@ function pct(n: number): string {
  * what's useful is how it sits against the rest of your laps at the same
  * track, and what you were actually doing with the controls.
  */
-type ReferenceRow = {
+export type ReferenceRow = {
   label: string;
   car: string;
   carDisplay: string | null;
@@ -305,7 +305,7 @@ ${telemetrySection(session, reference)}
  * whole value of the page. Reading "you were at 40% throttle" means
  * nothing until you can see where.
  */
-function telemetrySection(session: SessionRow, reference: ReferenceRow): string {
+export function telemetrySection(session: { track: string; data?: unknown }, reference: ReferenceRow): string {
   const points = readSamples(session.data);
   const refPoints = reference ? readSamples(reference.data) : [];
   const hasRef = refPoints.length >= 10;
