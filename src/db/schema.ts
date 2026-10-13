@@ -97,3 +97,25 @@ export const discordLeaderboardPosts = pgTable("discord_leaderboard_posts", {
   leaders: jsonb("leaders"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// The car setup that was loaded in the garage when a lap was driven, shared
+// by the driver (opt-in in the app). Attached to the session it was driven
+// in, or to the reference lap it was uploaded with; a reference lap that was
+// promoted from a session finds its setup through source_session_id. `svm`
+// is the exact setup file; `live` is the garage's own setting values
+// (key -> { value, stringValue, minValue, maxValue }) that the app can write
+// back into the game. See setups.ts for what is accepted.
+export const setups = pgTable("setups", {
+  id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").notNull().references(() => users.id),
+  sessionId: integer("session_id").references(() => sessions.id),
+  referenceLapId: integer("reference_lap_id").references(() => referenceLaps.id),
+  track: text("track").notNull(),
+  car: text("car").notNull(),
+  name: text("name").notNull(),
+  carModel: text("car_model"),
+  trackFolder: text("track_folder"),
+  svm: text("svm"),
+  live: jsonb("live"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

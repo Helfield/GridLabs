@@ -1,5 +1,6 @@
 import { db } from "./client";
-import { users, sessions, referenceLaps } from "./schema";
+import { users, sessions, referenceLaps, setups } from "./schema";
+import type { SetupInput } from "../setups";
 import { eq, and, or, inArray, sql } from "drizzle-orm";
 
 export async function getUserById(id: number) {
@@ -131,6 +132,8 @@ export async function createReferenceLap(input: {
 }
 
 export async function deleteReferenceLap(id: number) {
+  // A setup uploaded with this lap belongs to it; one that came from a session stays with the session.
+  await db.delete(setups).where(eq(setups.referenceLapId, id));
   await db.delete(referenceLaps).where(eq(referenceLaps.id, id));
 }
 
@@ -150,6 +153,85 @@ export async function getAvailableReferenceLaps(userId: number) {
       createdAt: true,
     },
   });
+}
+
+/** getAvailableReferenceLaps, each lap flagged with whether a shared setup comes with it. */
+export async function getAvailableReferenceLapsWithSetupFlag(userId: number) {
+  const laps = await db.query.referenceLaps.findMany({
+    where: or(eq(referenceLaps.ownerId, userId), eq(referenceLaps.isPublic, true)),
+    orderBy: (r, { desc }) => [desc(r.createdAt)],
+    columns: {
+      id: true,
+      ownerId: true,
+      track: true,
+      car: true,
+      carDisplay: true,
+      label: true,
+      lapTimeSeconds: true,
+      isPublic: true,
+      createdAt: true,
+      sourceSessionId: true,
+    },
+  });
+  if (!laps.length) return [];
+
+  const lapIds = laps.map((l) => l.id);
+  const sessionIds = laps.map((l) => l.sourceSessionId).filter((v): v is number => v !== null);
+  const rows = await db
+    .select({ referenceLapId: setups.referenceLapId, sessionId: setups.sessionId })
+    .from(setups)
+    .where(or(inArray(setups.referenceLapId, lapIds), sessionIds.length ? inArray(setups.sessionId, sessionIds) : sql`false`));
+  const byLap = new Set(rows.map((r) => r.referenceLapId).filter((v): v is number => v !== null));
+  const bySession = new Set(rows.map((r) => r.sessionId).filter((v): v is number => v !== null));
+
+  return laps.map(({ sourceSessionId, ...lap }) => ({
+    ...lap,
+    hasSetup: byLap.has(lap.id) || (sourceSessionId !== null && bySession.has(sourceSessionId)),
+  }));
+}
+
+/** Store a setup against a session and/or a reference lap. */
+export async function saveSetup(input: {
+  ownerId: number;
+  sessionId?: number | null;
+  referenceLapId?: number | null;
+  track: string;
+  car: string;
+  setup: SetupInput;
+}) {
+  await db.insert(setups).values({
+    ownerId: input.ownerId,
+    sessionId: input.sessionId ?? null,
+    referenceLapId: input.referenceLapId ?? null,
+    track: input.track,
+    car: input.car,
+    name: input.setup.name,
+    carModel: input.setup.carModel,
+    trackFolder: input.setup.trackFolder,
+    svm: input.setup.svm,
+    live: input.setup.live,
+  });
+}
+
+/**
+ * The setup that goes with a reference lap: one uploaded with the lap
+ * itself, else the one from the session the lap was promoted from. Newest
+ * first if there are several. Access is the caller's job (see
+ * getReferenceLapForDownload).
+ */
+export async function getSetupForReferenceLap(lap: { id: number; sourceSessionId: number | null }) {
+  const own = await db.query.setups.findFirst({
+    where: eq(setups.referenceLapId, lap.id),
+    orderBy: (t, { desc }) => [desc(t.createdAt)],
+  });
+  if (own) return own;
+  if (lap.sourceSessionId === null) return null;
+  return (
+    (await db.query.setups.findFirst({
+      where: eq(setups.sessionId, lap.sourceSessionId),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    })) ?? null
+  );
 }
 
 export async function getReferenceLapForDownload(id: number, userId: number) {
@@ -255,6 +337,7 @@ export async function getPublicLapsForTrack(track: string) {
     columns: {
       id: true, track: true, car: true, carDisplay: true,
       label: true, lapTimeSeconds: true, createdAt: true,
+      autoPromoted: true, sourceSessionId: true,
     },
   });
   if (laps.length === 0) return { laps, classes: [], sampleData: null };
@@ -337,7 +420,6 @@ export { UNCLASSIFIED, classRank, classDisplayName };
 
 export type TrackProgress = {
   track: string;
-      autoPromoted: true, sourceSessionId: true,
   carClass: string | null;
   car: string;
   lapCount: number;
