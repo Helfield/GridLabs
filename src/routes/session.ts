@@ -118,7 +118,7 @@ sessionRoutes.post("/:id/restore", async (c) => {
  * the background -- a slow or unreachable Discord must never make a
  * disqualification look like it failed.
  */
-async function afterModeration(track: string): Promise<void> {
+export async function afterModeration(track: string): Promise<void> {
   try {
     await promoteBestLaps(track);
   } catch (err) {

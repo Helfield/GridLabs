@@ -337,6 +337,7 @@ export { UNCLASSIFIED, classRank, classDisplayName };
 
 export type TrackProgress = {
   track: string;
+      autoPromoted: true, sourceSessionId: true,
   carClass: string | null;
   car: string;
   lapCount: number;

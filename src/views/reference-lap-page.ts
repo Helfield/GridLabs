@@ -3,6 +3,7 @@ import { lapTime, fullDate, delta } from "./components";
 import { telemetrySection } from "./session-pages";
 import { classDisplayName } from "../classes";
 import type { LapCheck } from "../db/promotions";
+import { removeForm } from "./library-pages";
 
 type Nav = NonNullable<NavUser>;
 
@@ -15,6 +16,7 @@ type Detail = {
     label: string;
     lapTimeSeconds: number | null;
     autoPromoted: boolean;
+    sourceSessionId?: number | null;
     createdAt: Date;
     data: unknown;
   };
@@ -88,7 +90,10 @@ export function referenceLapPage(navUser: Nav, detail: Detail, checks: LapCheck[
   <div style="text-align:right">
     <div class="stat__k">Lap time</div>
     <div class="stat__v ${isFastest ? "t-fastest" : ""}" style="font-size:40px">${escapeHtml(lapTime(lap.lapTimeSeconds))}</div>
-    <a class="btn btn--ghost btn--sm" href="/library/lap/${lap.id}/download" style="margin-top:8px">Download for the app</a>
+    <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-end">
+      <a class="btn btn--ghost btn--sm" href="/library/lap/${lap.id}/download">Download for the app</a>
+      ${navUser.role === "coach" ? removeForm(lap.id, lap.autoPromoted && !!lap.sourceSessionId) : ""}
+    </div>
   </div>
 </div>
 
