@@ -13,6 +13,9 @@ import {
 import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../views/coach-pages";
 import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
 import { promoteBestLaps } from "../db/promotions";
+import { discordPage } from "../views/coach-discord";
+import { botEnabled, guildId, listAssignableRoles, listTextChannels, parseEmoji } from "../discord/bot-api";
+import { attachToMessage, createPanel, deleteMapping, listReactionRoles, type RolePair } from "../discord/reaction-roles";
 
 export const coachRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -164,3 +167,68 @@ function parseLapTime(raw: string): number | null {
   const plain = Number(text.replace(",", "."));
   return Number.isFinite(plain) && plain > 0 ? plain : null;
 }
+// Discord reaction roles. The bot itself runs from discord/gateway.ts; this
+// page only edits what it listens for.
+coachRoutes.get("/discord", async (c) => {
+  const user = await getUserById(c.get("userId"));
+  if (!user) return c.redirect("/login");
+  const enabled = botEnabled();
+  let error: string | null = null;
+  let roles: Awaited<ReturnType<typeof listAssignableRoles>> = [];
+  let channels: Awaited<ReturnType<typeof listTextChannels>> = [];
+  if (enabled) {
+    try {
+      [roles, channels] = await Promise.all([listAssignableRoles(), listTextChannels()]);
+    } catch (err) {
+      console.error("Loading Discord roles/channels failed:", err);
+      error = "Couldn't load the server's roles and channels. Is the bot invited to the server and is DISCORD_GUILD_ID right?";
+    }
+  }
+  const notice = c.req.query("done") ? "Done — the reaction roles are live." : null;
+  error = c.req.query("error") ?? error;
+  return c.html(
+    discordPage(user, { enabled, guildId: guildId(), notice, error, mappings: await listReactionRoles(), roles, channels }),
+  );
+});
+
+coachRoutes.post("/discord/panel", async (c) => {
+  const body = await c.req.parseBody({ all: true });
+  const one = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const many = (v: unknown) => (Array.isArray(v) ? v : v === undefined ? [] : [v]).map(one);
+  const fail = (msg: string) => c.redirect(`/coach/discord?error=${encodeURIComponent(msg)}`);
+
+  if (!botEnabled()) return fail("The bot is off.");
+  const channelId = one(body.channelId);
+  const messageId = one(body.messageId);
+  if (!/^\d+$/.test(channelId)) return fail("Pick a channel.");
+  if (messageId && !/^\d+$/.test(messageId)) return fail("The message ID should be a number.");
+
+  // Only roles the page offers, so a hand-built request can't hand out a role it never showed.
+  const roles = await listAssignableRoles();
+  const emojis = many(body.emoji);
+  const roleIds = many(body.roleId);
+  const pairs: RolePair[] = [];
+  for (let i = 0; i < emojis.length; i++) {
+    if (!emojis[i] && !roleIds[i]) continue;
+    const emoji = parseEmoji(emojis[i] ?? "");
+    const role = roles.find((r) => r.id === roleIds[i]);
+    if (!emoji || !role) return fail(`Row ${i + 1}: needs a real emoji and a role.`);
+    if (pairs.some((p) => p.emoji === emoji)) return fail(`Row ${i + 1}: that emoji is already used.`);
+    pairs.push({ emoji, roleId: role.id, roleName: role.name });
+  }
+  if (pairs.length === 0) return fail("Add at least one emoji and role.");
+
+  try {
+    if (messageId) await attachToMessage(channelId, messageId, pairs);
+    else await createPanel(channelId, one(body.text), pairs);
+  } catch (err) {
+    console.error("Creating reaction roles failed:", err);
+    return fail("Discord refused. Check the bot can see that channel, send messages and add reactions, and that the emoji exists.");
+  }
+  return c.redirect("/coach/discord?done=1");
+});
+
+coachRoutes.post("/discord/mapping/:id/delete", async (c) => {
+  await deleteMapping(Number(c.req.param("id")));
+  return c.redirect("/coach/discord");
+});

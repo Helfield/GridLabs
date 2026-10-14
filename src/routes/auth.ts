@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import { db } from "../db/client";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -17,6 +17,13 @@ function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
+}
+
+// Signs the session cookie so it can't be forged by editing the user id.
+// SESSION_SECRET is preferred; the OAuth client secret is a fallback so an
+// existing deploy keeps working until one is set.
+function sessionSecret(): string {
+  return process.env.SESSION_SECRET || requiredEnv("DISCORD_CLIENT_SECRET");
 }
 
 export const authRoutes = new Hono();
@@ -178,7 +185,7 @@ authRoutes.get("/discord/callback", async (c) => {
   // Minimal session: a signed cookie holding the user id. Swap for a
   // proper session table / JWT if you want revocable sessions later --
   // fine as a starting point for Phase 1.
-  setCookie(c, "session_user_id", String(userId), {
+  await setSignedCookie(c, "session_user_id", String(userId), sessionSecret(), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "Lax",
@@ -190,14 +197,15 @@ authRoutes.get("/discord/callback", async (c) => {
 });
 
 authRoutes.post("/logout", (c) => {
-  setCookie(c, "session_user_id", "", { maxAge: 0, path: "/" });
+  deleteCookie(c, "session_user_id", { path: "/" });
   return c.redirect("/");
 });
 
 // Simple auth middleware other routes can use: attaches c.get("userId")
 // or responds 401.
 export async function requireAuth(c: Context<{ Variables: AppVariables }>, next: Next) {
-  const userId = getCookie(c, "session_user_id");
+  // false = present but tampered with; undefined = absent. Both mean no session.
+  const userId = await getSignedCookie(c, sessionSecret(), "session_user_id");
   if (!userId) {
     return c.redirect("/login");
   }
