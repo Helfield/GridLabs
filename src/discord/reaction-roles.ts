@@ -9,6 +9,14 @@ export async function listReactionRoles() {
   return db.select().from(reactionRoles).orderBy(reactionRoles.messageId, reactionRoles.id);
 }
 
+/** How many distinct emoji already hand out roles on a message (Discord allows 20 reactions per message). */
+export async function emojisOnMessage(messageId: string): Promise<string[]> {
+  const rows = await db.select({ emoji: reactionRoles.emoji }).from(reactionRoles).where(eq(reactionRoles.messageId, messageId));
+  return rows.map((r) => r.emoji);
+}
+
+export const MAX_REACTIONS_PER_MESSAGE = 20;
+
 export async function findRoleFor(messageId: string, emoji: string): Promise<string | null> {
   const [row] = await db
     .select({ roleId: reactionRoles.roleId })

@@ -1,5 +1,5 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
-import { emojiDisplay, type GuildChannel, type GuildRole } from "../discord/bot-api";
+import { emojiDisplay, type GuildChannel, type GuildEmoji, type GuildRole } from "../discord/bot-api";
 
 type Nav = NonNullable<NavUser>;
 
@@ -12,7 +12,7 @@ export type ReactionRoleRow = {
   roleName: string | null;
 };
 
-const SLOTS = 6;
+const START_ROWS = 4;
 
 const INPUT =
   "width:100%;padding:11px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);font:inherit";
@@ -24,6 +24,9 @@ function emojiLabel(key: string): string {
 }
 
 // Coach-only page: create reaction-role messages and manage the existing ones.
+// Each "panel" is its own form posting one message; the page can hold as many
+// as needed, and each panel can take as many emoji/role rows as it needs (up to
+// Discord's 20 reactions per message).
 export function discordPage(
   navUser: Nav,
   opts: {
@@ -34,6 +37,7 @@ export function discordPage(
     mappings: ReactionRoleRow[];
     roles: GuildRole[];
     channels: GuildChannel[];
+    emojis: GuildEmoji[];
   },
 ): string {
   const roleOptions = opts.roles
@@ -42,15 +46,13 @@ export function discordPage(
   const channelOptions = opts.channels
     .map((c) => `<option value="${escapeHtml(c.id)}">#${escapeHtml(c.name)}</option>`)
     .join("");
+  const emojiList = opts.emojis.map((e) => `<option value=":${escapeHtml(e.name)}:"></option>`).join("");
 
-  const slots = Array.from(
-    { length: SLOTS },
-    () => `
-      <div style="display:grid;grid-template-columns:90px 1fr;gap:10px;margin-bottom:10px">
-        <input type="text" name="emoji" placeholder="Emoji" autocomplete="off">
+  const row = `
+      <div class="rr-row" style="display:grid;grid-template-columns:130px 1fr;gap:10px;margin-bottom:10px">
+        <input type="text" name="emoji" placeholder="Emoji or :name:" list="rr-emojis" autocomplete="off">
         <select name="roleId" style="${INPUT}"><option value="">— role —</option>${roleOptions}</select>
-      </div>`,
-  ).join("");
+      </div>`;
 
   // Group by message so each reaction-role message reads as one block.
   const byMessage = new Map<string, ReactionRoleRow[]>();
@@ -63,7 +65,12 @@ export function discordPage(
             const link = `https://discord.com/channels/${opts.guildId}/${rows[0].channelId}/${messageId}`;
             return `
 <div class="ref" style="display:block">
-  <div class="ref__meta" style="margin-bottom:8px"><a href="${escapeHtml(link)}" target="_blank" rel="noopener">Open message in Discord ↗</a></div>
+  <div class="ref__meta" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <a href="${escapeHtml(link)}" target="_blank" rel="noopener">Open message in Discord ↗</a>
+    <span>${rows.length} of 20 reactions
+      <button class="linkbtn" type="button" data-add-to="${escapeHtml(messageId)}" data-channel="${escapeHtml(rows[0].channelId)}">+ Add more</button>
+    </span>
+  </div>
   ${rows
     .map(
       (r) => `
@@ -95,9 +102,22 @@ export function discordPage(
 ${setup}
 ${opts.notice ? `<p class="hint" style="color:var(--pb)">${escapeHtml(opts.notice)}</p>` : ""}
 ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.error)}</p>` : ""}
+<datalist id="rr-emojis">${emojiList}</datalist>
 <div class="grid-2">
+  <div>
+    <div id="rr-panels"></div>
+    <button class="btn btn--ghost btn--sm" type="button" id="rr-add-panel">+ Add another panel</button>
+    <p class="hint" style="margin-top:10px">Each panel posts one Discord message. Use a separate panel for each message or channel — Discord allows 20 reactions on a single message, so a long list (say SR and DR ranks) goes in two panels. Each panel is created on its own with its own Create button.</p>
+  </div>
   <section class="panel">
-    <div class="panel__head"><h2>New reaction roles</h2></div>
+    <div class="panel__head"><h2>Live now</h2><span class="tag">${opts.mappings.length}</span></div>
+    <div class="panel__body">${existing}</div>
+  </section>
+</div>
+
+<template id="rr-panel-tpl">
+  <section class="panel" style="margin-bottom:18px">
+    <div class="panel__head"><h2 class="rr-title">New reaction roles</h2><button class="linkbtn rr-remove" type="button" style="color:var(--warn)">Remove panel</button></div>
     <div class="panel__body">
       <form action="/coach/discord/panel" method="post">
         <label class="field">
@@ -108,21 +128,62 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
           <span class="field__label">Existing message ID (optional)</span>
           <input type="text" name="messageId" placeholder="Leave blank to post a new message" autocomplete="off">
         </label>
-        <label class="field">
+        <label class="field rr-text">
           <span class="field__label">Message text (new messages only)</span>
-          <input type="text" name="text" placeholder="e.g. Pick your class roles:">
+          <input type="text" name="text" placeholder="e.g. Pick your SR rank:">
         </label>
         <span class="field__label">Emoji → role</span>
-        ${slots}
-        <p class="hint">Type or paste an emoji (a custom server emoji works too, pasted as Discord shows it). The bot adds each emoji to the message so members can click it. Fill only the rows you need. The bot's own role has to sit above the roles it hands out (Server Settings → Roles).</p>
+        <div class="rr-rows">${row.repeat(START_ROWS)}</div>
+        <button class="btn btn--ghost btn--sm rr-add-row" type="button" style="margin-bottom:12px">+ Add row</button>
+        <p class="hint">Type an emoji, or <code>:name:</code> for one of this server's custom emoji (suggestions appear as you type). The bot adds each emoji to the message so members can click it. Empty rows are ignored. The bot's own role has to sit above the roles it hands out (Server Settings → Roles).</p>
         <button class="btn btn--discord" style="margin-top:6px" type="submit"${opts.enabled ? "" : " disabled"}>Create</button>
       </form>
     </div>
   </section>
-  <section class="panel">
-    <div class="panel__head"><h2>Live now</h2><span class="tag">${opts.mappings.length}</span></div>
-    <div class="panel__body">${existing}</div>
-  </section>
-</div>`;
+</template>
+<template id="rr-row-tpl">${row}</template>
+
+<script>
+(function () {
+  var MAX_ROWS = 20;
+  var panels = document.getElementById("rr-panels");
+  var panelTpl = document.getElementById("rr-panel-tpl");
+  var rowTpl = document.getElementById("rr-row-tpl");
+
+  function addRow(panel) {
+    var rows = panel.querySelector(".rr-rows");
+    if (rows.children.length >= MAX_ROWS) {
+      alert("Discord allows 20 reactions on one message. Add another panel for more.");
+      return;
+    }
+    rows.appendChild(rowTpl.content.firstElementChild.cloneNode(true));
+  }
+
+  function addPanel(channelId, messageId) {
+    var panel = panelTpl.content.firstElementChild.cloneNode(true);
+    panel.querySelector(".rr-add-row").addEventListener("click", function () { addRow(panel); });
+    panel.querySelector(".rr-remove").addEventListener("click", function () { panel.remove(); });
+    if (channelId) panel.querySelector("[name=channelId]").value = channelId;
+    if (messageId) {
+      panel.querySelector("[name=messageId]").value = messageId;
+      panel.querySelector(".rr-title").textContent = "Add to an existing message";
+      panel.querySelector(".rr-text").style.display = "none";
+    }
+    panels.appendChild(panel);
+    return panel;
+  }
+
+  document.getElementById("rr-add-panel").addEventListener("click", function () {
+    addPanel().scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+  document.querySelectorAll("[data-add-to]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      addPanel(btn.getAttribute("data-channel"), btn.getAttribute("data-add-to")).scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  });
+
+  addPanel();
+})();
+</script>`;
   return layout("Discord reaction roles", body, navUser);
 }
