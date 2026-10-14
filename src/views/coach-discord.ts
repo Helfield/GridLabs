@@ -14,8 +14,19 @@ export type ReactionRoleRow = {
 
 const START_ROWS = 4;
 
-const INPUT =
-  "width:100%;padding:11px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);font:inherit";
+// Dark form controls. Without color-scheme the browser draws white dropdown
+// lists and inputs; the option rules cover the open list, which ignores the
+// select's own background in some browsers.
+const CSS = `
+<style>
+.rr-in{
+  width:100%;padding:11px 13px;background:var(--carbon);border:1px solid var(--line);
+  border-radius:var(--r-sm);color:var(--text);font:inherit;font-size:14.5px;color-scheme:dark;
+}
+.rr-in:focus{outline:none;border-color:var(--fastest);box-shadow:0 0 0 3px rgba(177,75,255,.15)}
+.rr-in::placeholder{color:var(--dim)}
+.rr-in option{background:var(--panel-2);color:var(--text)}
+</style>`;
 
 function emojiLabel(key: string): string {
   // Custom emoji can't render outside Discord, so show their name.
@@ -50,8 +61,8 @@ export function discordPage(
 
   const row = `
       <div class="rr-row" style="display:grid;grid-template-columns:130px 1fr;gap:10px;margin-bottom:10px">
-        <input type="text" name="emoji" placeholder="Emoji or :name:" list="rr-emojis" autocomplete="off">
-        <select name="roleId" style="${INPUT}"><option value="">— role —</option>${roleOptions}</select>
+        <input type="text" name="emoji" class="rr-in" placeholder="Emoji or :name:" list="rr-emojis" autocomplete="off">
+        <select name="roleId" class="rr-in"><option value="">— role —</option>${roleOptions}</select>
       </div>`;
 
   // Group by message so each reaction-role message reads as one block.
@@ -91,6 +102,7 @@ export function discordPage(
     : `<p class="hint" style="color:var(--warn)">The bot is off — set DISCORD_BOT_TOKEN in Railway's Variables (and redeploy) to turn it on.</p>`;
 
   const body = `
+${CSS}
 <a class="backlink" href="/coach">← All drivers</a>
 <div class="phead">
   <div>
@@ -122,15 +134,15 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
       <form action="/coach/discord/panel" method="post">
         <label class="field">
           <span class="field__label">Channel</span>
-          <select name="channelId" required style="${INPUT}"><option value="">— channel —</option>${channelOptions}</select>
+          <select name="channelId" required class="rr-in"><option value="">— channel —</option>${channelOptions}</select>
         </label>
         <label class="field">
           <span class="field__label">Existing message ID (optional)</span>
-          <input type="text" name="messageId" placeholder="Leave blank to post a new message" autocomplete="off">
+          <input type="text" name="messageId" class="rr-in" placeholder="Leave blank to post a new message" autocomplete="off">
         </label>
         <label class="field rr-text">
           <span class="field__label">Message text (new messages only)</span>
-          <input type="text" name="text" placeholder="e.g. Pick your SR rank:">
+          <input type="text" name="text" class="rr-in" placeholder="e.g. Pick your SR rank:">
         </label>
         <span class="field__label">Emoji → role</span>
         <div class="rr-rows">${row.repeat(START_ROWS)}</div>

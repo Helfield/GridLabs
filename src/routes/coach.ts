@@ -14,7 +14,7 @@ import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../view
 import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
 import { promoteBestLaps } from "../db/promotions";
 import { discordPage } from "../views/coach-discord";
-import { botEnabled, guildId, listAssignableRoles, listGuildEmojis, listTextChannels, parseEmoji } from "../discord/bot-api";
+import { botEnabled, DiscordApiError, guildId, listAssignableRoles, listGuildEmojis, listTextChannels, parseEmoji } from "../discord/bot-api";
 import { attachToMessage, createPanel, deleteMapping, emojisOnMessage, listReactionRoles, MAX_REACTIONS_PER_MESSAGE, type RolePair } from "../discord/reaction-roles";
 
 export const coachRoutes = new Hono<{ Variables: AppVariables }>();
@@ -229,7 +229,18 @@ coachRoutes.post("/discord/panel", async (c) => {
     else await createPanel(channelId, one(body.text), pairs);
   } catch (err) {
     console.error("Creating reaction roles failed:", err);
-    return fail("Discord refused. Check the bot can see that channel, send messages and add reactions, and that the emoji exists.");
+    // Discord's own reason ("Missing Access", "Unknown Emoji", ...) is far more useful than a guess.
+    let reason = "";
+    if (err instanceof DiscordApiError) {
+      try {
+        reason = (JSON.parse(err.body) as { message?: string }).message ?? "";
+      } catch {
+        reason = "";
+      }
+    }
+    return fail(
+      `Discord refused${reason ? `: ${reason}` : ""}. Check the bot can see that channel, send messages and add reactions, and that the emoji exists.`,
+    );
   }
   return c.redirect("/coach/discord?done=1");
 });
