@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, jsonb, real, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean, jsonb, real, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -97,3 +97,21 @@ export const discordLeaderboardPosts = pgTable("discord_leaderboard_posts", {
   leaders: jsonb("leaders"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// Reaction roles: reacting to `messageId` with `emoji` gives a member `roleId`
+// (removing the reaction takes it away). `emoji` is the unicode character, or
+// "name:id" for a custom server emoji. Managed from /coach/discord and acted on
+// by the bot in discord/gateway.ts.
+export const reactionRoles = pgTable(
+  "reaction_roles",
+  {
+    id: serial("id").primaryKey(),
+    channelId: text("channel_id").notNull(),
+    messageId: text("message_id").notNull(),
+    emoji: text("emoji").notNull(),
+    roleId: text("role_id").notNull(),
+    roleName: text("role_name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({ messageEmoji: uniqueIndex("reaction_roles_message_emoji_idx").on(t.messageId, t.emoji) }),
+);

@@ -16,4 +16,15 @@ export async function ensureSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "excluded" boolean DEFAULT false NOT NULL`);
   await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "excluded_reason" text`);
   await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "excluded_at" timestamp`);
+  // Discord reaction roles (see schema.ts reactionRoles): a new table, so nothing existing is touched.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "reaction_roles" (
+    "id" serial PRIMARY KEY NOT NULL,
+    "channel_id" text NOT NULL,
+    "message_id" text NOT NULL,
+    "emoji" text NOT NULL,
+    "role_id" text NOT NULL,
+    "role_name" text,
+    "created_at" timestamp DEFAULT now() NOT NULL
+  )`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "reaction_roles_message_emoji_idx" ON "reaction_roles" ("message_id", "emoji")`);
 }
