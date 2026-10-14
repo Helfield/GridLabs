@@ -53,15 +53,29 @@ export async function listTextChannels(): Promise<GuildChannel[]> {
   return channels.filter((c) => c.type === 0 || c.type === 5).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export type GuildEmoji = { id: string; name: string; animated: boolean };
+
+/** The server's custom emoji, for the picker and for resolving `:name:`. */
+export async function listGuildEmojis(): Promise<GuildEmoji[]> {
+  const emojis = (await botFetch<GuildEmoji[]>("GET", `/guilds/${guildId()}/emojis`)) ?? [];
+  return emojis.sort((x, y) => x.name.localeCompare(y.name));
+}
+
 /**
  * Normalises what a coach typed into the key the API and gateway use:
  * a unicode emoji stays as is; `<:name:id>` / `<a:name:id>` becomes "name:id".
  */
-export function parseEmoji(input: string): string | null {
+export function parseEmoji(input: string, custom: GuildEmoji[] = []): string | null {
   const text = input.trim();
   if (!text) return null;
-  const custom = text.match(/^<a?:(\w+):(\d+)>$/);
-  if (custom) return `${custom[1]}:${custom[2]}`;
+  // `:name:` picks one of the server's own emoji by name.
+  const named = text.match(/^:(\w+):$/);
+  if (named) {
+    const hit = custom.find((e) => e.name.toLowerCase() === named[1].toLowerCase());
+    return hit ? `${hit.name}:${hit.id}` : null;
+  }
+  const pasted = text.match(/^<a?:(\w+):(\d+)>$/);
+  if (pasted) return `${pasted[1]}:${pasted[2]}`;
   if (/^\w+:\d+$/.test(text)) return text;
   // Anything else must be an actual emoji, not plain text like "gt3".
   if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}|[#-9]️?⃣/u.test(text)) return null;

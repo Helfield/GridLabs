@@ -14,8 +14,8 @@ import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../view
 import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
 import { promoteBestLaps } from "../db/promotions";
 import { discordPage } from "../views/coach-discord";
-import { botEnabled, guildId, listAssignableRoles, listTextChannels, parseEmoji } from "../discord/bot-api";
-import { attachToMessage, createPanel, deleteMapping, listReactionRoles, type RolePair } from "../discord/reaction-roles";
+import { botEnabled, guildId, listAssignableRoles, listGuildEmojis, listTextChannels, parseEmoji } from "../discord/bot-api";
+import { attachToMessage, createPanel, deleteMapping, emojisOnMessage, listReactionRoles, MAX_REACTIONS_PER_MESSAGE, type RolePair } from "../discord/reaction-roles";
 
 export const coachRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -176,9 +176,10 @@ coachRoutes.get("/discord", async (c) => {
   let error: string | null = null;
   let roles: Awaited<ReturnType<typeof listAssignableRoles>> = [];
   let channels: Awaited<ReturnType<typeof listTextChannels>> = [];
+  let emojis: Awaited<ReturnType<typeof listGuildEmojis>> = [];
   if (enabled) {
     try {
-      [roles, channels] = await Promise.all([listAssignableRoles(), listTextChannels()]);
+      [roles, channels, emojis] = await Promise.all([listAssignableRoles(), listTextChannels(), listGuildEmojis()]);
     } catch (err) {
       console.error("Loading Discord roles/channels failed:", err);
       error = "Couldn't load the server's roles and channels. Is the bot invited to the server and is DISCORD_GUILD_ID right?";
@@ -187,7 +188,7 @@ coachRoutes.get("/discord", async (c) => {
   const notice = c.req.query("done") ? "Done — the reaction roles are live." : null;
   error = c.req.query("error") ?? error;
   return c.html(
-    discordPage(user, { enabled, guildId: guildId(), notice, error, mappings: await listReactionRoles(), roles, channels }),
+    discordPage(user, { enabled, guildId: guildId(), notice, error, mappings: await listReactionRoles(), roles, channels, emojis }),
   );
 });
 
@@ -204,19 +205,24 @@ coachRoutes.post("/discord/panel", async (c) => {
   if (messageId && !/^\d+$/.test(messageId)) return fail("The message ID should be a number.");
 
   // Only roles the page offers, so a hand-built request can't hand out a role it never showed.
-  const roles = await listAssignableRoles();
+  const [roles, customEmojis] = await Promise.all([listAssignableRoles(), listGuildEmojis()]);
   const emojis = many(body.emoji);
   const roleIds = many(body.roleId);
   const pairs: RolePair[] = [];
   for (let i = 0; i < emojis.length; i++) {
     if (!emojis[i] && !roleIds[i]) continue;
-    const emoji = parseEmoji(emojis[i] ?? "");
+    const emoji = parseEmoji(emojis[i] ?? "", customEmojis);
     const role = roles.find((r) => r.id === roleIds[i]);
     if (!emoji || !role) return fail(`Row ${i + 1}: needs a real emoji and a role.`);
     if (pairs.some((p) => p.emoji === emoji)) return fail(`Row ${i + 1}: that emoji is already used.`);
     pairs.push({ emoji, roleId: role.id, roleName: role.name });
   }
   if (pairs.length === 0) return fail("Add at least one emoji and role.");
+  // Discord stops a message at 20 different reactions; count what this message already carries.
+  const already = messageId ? (await emojisOnMessage(messageId)).filter((e) => !pairs.some((p) => p.emoji === e)).length : 0;
+  if (already + pairs.length > MAX_REACTIONS_PER_MESSAGE) {
+    return fail(`Discord allows ${MAX_REACTIONS_PER_MESSAGE} reactions per message — that would be ${already + pairs.length}. Split it across two panels.`);
+  }
 
   try {
     if (messageId) await attachToMessage(channelId, messageId, pairs);
