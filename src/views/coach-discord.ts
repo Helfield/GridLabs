@@ -49,6 +49,7 @@ export function discordPage(
     roles: GuildRole[];
     channels: GuildChannel[];
     emojis: GuildEmoji[];
+    voice: { lobbyId: string | null; voiceChannels: GuildChannel[]; categories: GuildChannel[]; notice: string | null };
   },
 ): string {
   const roleOptions = opts.roles
@@ -127,6 +128,46 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
     <div class="panel__body">${existing}</div>
   </section>
 </div>
+
+<section class="panel" style="margin-top:18px">
+  <div class="panel__head"><h2>Temporary voice channels</h2><span class="tag">${opts.voice.lobbyId ? "on" : "off"}</span></div>
+  <div class="panel__body">
+    <p class="hint">Pick a voice channel to act as the lobby. When a member joins it, the bot makes them a voice channel of their own (right next to the lobby), moves them in, and lets them rename it from Discord. A channel the bot made is deleted once nobody has been in it for 30 seconds. Anyone who rejoins the lobby is put back in the channel they already own.</p>
+    ${opts.voice.notice ? `<p class="hint" style="color:var(--pb)">${escapeHtml(opts.voice.notice)}</p>` : ""}
+    ${(() => {
+      const current = opts.voice.voiceChannels.find((c) => c.id === opts.voice.lobbyId);
+      return opts.voice.lobbyId
+        ? `<p class="hint">Lobby right now: <strong>${current ? `🔊 ${escapeHtml(current.name)}` : "a channel that no longer exists — pick another"}</strong></p>`
+        : "";
+    })()}
+    <form action="/coach/discord/voice" method="post" style="margin-top:10px;max-width:520px">
+      <input type="hidden" name="action" value="set">
+      <label class="field">
+        <span class="field__label">Use an existing voice channel as the lobby</span>
+        <select name="channelId" class="rr-in" required><option value="">— voice channel —</option>${opts.voice.voiceChannels
+          .map((c) => `<option value="${escapeHtml(c.id)}"${c.id === opts.voice.lobbyId ? " selected" : ""}>🔊 ${escapeHtml(c.name)}</option>`)
+          .join("")}</select>
+      </label>
+      <button class="btn btn--ghost btn--sm" type="submit"${opts.enabled ? "" : " disabled"}>Set as lobby</button>
+    </form>
+    <form action="/coach/discord/voice" method="post" style="margin-top:18px;max-width:520px">
+      <input type="hidden" name="action" value="create">
+      <span class="field__label">Or have the bot create the lobby</span>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <input type="text" name="name" class="rr-in" value="➕ Create a channel" autocomplete="off" aria-label="Lobby name">
+        <select name="categoryId" class="rr-in" aria-label="Category"><option value="">No category</option>${opts.voice.categories
+          .map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`)
+          .join("")}</select>
+      </div>
+      <button class="btn btn--ghost btn--sm" type="submit"${opts.enabled ? "" : " disabled"}>Create lobby channel</button>
+    </form>
+    ${
+      opts.voice.lobbyId
+        ? `<form action="/coach/discord/voice" method="post" style="margin-top:18px"><input type="hidden" name="action" value="off"><button class="linkbtn" type="submit" style="color:var(--warn)">Turn off temporary voice channels</button></form>`
+        : ""
+    }
+  </div>
+</section>
 
 <template id="rr-panel-tpl">
   <section class="panel" style="margin-bottom:18px">

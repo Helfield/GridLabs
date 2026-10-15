@@ -47,10 +47,20 @@ export async function listAssignableRoles(): Promise<GuildRole[]> {
   return roles.filter((r) => r.id !== guildId() && !r.managed).sort((a, b) => b.position - a.position);
 }
 
+/** Every channel in the server, sorted into the kinds the coach page offers. */
+export async function listChannelsByKind(): Promise<{ text: GuildChannel[]; voice: GuildChannel[]; categories: GuildChannel[] }> {
+  const all = (await botFetch<GuildChannel[]>("GET", `/guilds/${guildId()}/channels`)) ?? [];
+  const byName = (a: GuildChannel, b: GuildChannel) => a.name.localeCompare(b.name);
+  return {
+    text: all.filter((c) => c.type === 0 || c.type === 5).sort(byName), // text, announcement
+    voice: all.filter((c) => c.type === 2).sort(byName),
+    categories: all.filter((c) => c.type === 4).sort(byName),
+  };
+}
+
 /** Text and announcement channels (types 0 and 5). */
 export async function listTextChannels(): Promise<GuildChannel[]> {
-  const channels = (await botFetch<GuildChannel[]>("GET", `/guilds/${guildId()}/channels`)) ?? [];
-  return channels.filter((c) => c.type === 0 || c.type === 5).sort((a, b) => a.name.localeCompare(b.name));
+  return (await listChannelsByKind()).text;
 }
 
 export type GuildEmoji = { id: string; name: string; animated: boolean };

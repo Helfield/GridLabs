@@ -1,19 +1,24 @@
 import { botEnabled, guildId } from "./bot-api";
 import { findRoleFor, giveRole, takeRole } from "./reaction-roles";
+import { onGuildCreate, onVoiceState, type VoiceState } from "./voice";
 
 /**
  * The bot's live connection to Discord, used for reaction roles: when a member
  * adds (or removes) a reaction on a message set up in /coach/discord, they get
  * (or lose) the matching role.
  *
+ * It also drives join-to-create voice channels (voice.ts).
+ *
  * A bare gateway client over Bun's built-in WebSocket -- like the rest of the
- * Discord code here there is no library. It only needs the GUILD_MESSAGE_REACTIONS
- * intent, which is not a privileged one, so nothing has to be switched on in the
+ * Discord code here there is no library. It needs the GUILDS, GUILD_VOICE_STATES and
+ * GUILD_MESSAGE_REACTIONS intents, none of them privileged, so nothing has to be switched on in the
  * developer portal besides creating the bot. Off entirely unless
  * DISCORD_BOT_TOKEN is set.
  */
 
 const GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
+const INTENT_GUILDS = 1 << 0; // delivers GUILD_CREATE: the channel list and who is already in voice
+const INTENT_GUILD_VOICE_STATES = 1 << 7;
 const INTENT_GUILD_MESSAGE_REACTIONS = 1 << 10;
 
 type Payload = { op: number; d: any; s: number | null; t: string | null };
@@ -106,7 +111,7 @@ function handle(socket: WebSocket, msg: Payload, resuming: boolean): void {
       } else {
         send(socket, 2, {
           token,
-          intents: INTENT_GUILD_MESSAGE_REACTIONS,
+          intents: INTENT_GUILDS | INTENT_GUILD_VOICE_STATES | INTENT_GUILD_MESSAGE_REACTIONS,
           properties: { os: "linux", browser: "gridlabs", device: "gridlabs" },
         });
       }
@@ -143,6 +148,12 @@ function dispatch(type: string | null, data: any): void {
       resumeUrl = data.resume_gateway_url;
       botUserId = data.user.id;
       console.log(`Discord bot: connected as ${data.user.username}.`);
+      break;
+    case "GUILD_CREATE":
+      onGuildCreate(data).catch((err) => console.error("Voice startup sweep failed:", err));
+      break;
+    case "VOICE_STATE_UPDATE":
+      onVoiceState(data as VoiceState).catch((err) => console.error("Voice channel handling failed:", err));
       break;
     case "MESSAGE_REACTION_ADD":
       onReaction(data as ReactionEvent, true).catch((err) => console.error("Reaction role (add) failed:", err));
