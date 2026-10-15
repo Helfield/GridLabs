@@ -4,12 +4,15 @@ import {
   Events,
   GatewayIntentBits,
   MessageFlags,
+  PermissionFlagsBits,
   REST,
   Routes,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
   type GuildMember,
+  type VoiceBasedChannel,
 } from "discord.js";
+import { denyControl } from "./ownership.ts";
 import { GuildPlayer } from "./player.ts";
 import { formatDuration, parseTarget } from "./target.ts";
 import { COOKIES_FILE, YtdlpError, lookup } from "./ytdlp.ts";
@@ -106,6 +109,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 const ephemeral = (content: string) => ({ content, flags: MessageFlags.Ephemeral } as const);
 
+const CONTROL_COMMANDS = new Set(["skip", "pause", "resume", "stop", "volume"]);
+
+/** A message if this member may not control the music in `channel`, otherwise null. */
+function denyFor(channel: VoiceBasedChannel, member: GuildMember): string | null {
+  return denyControl(
+    channel.permissionOverwrites.cache.values(),
+    member.id,
+    member.permissions.has(PermissionFlagsBits.Administrator),
+  );
+}
+
 async function handle(i: ChatInputCommandInteraction): Promise<void> {
   if (i.guildId !== GUILD_ID || !i.guild) {
     await i.reply(ephemeral("This bot only works in the GridLabs server."));
@@ -114,10 +128,24 @@ async function handle(i: ChatInputCommandInteraction): Promise<void> {
   const p = players.get(i.guildId);
   const member = i.member as GuildMember;
 
+  // Everything except /play and /queue changes what is playing, so it is only for someone sitting in
+  // the bot's channel -- and, in a member-owned channel, only for its owner (or an administrator).
+  if (CONTROL_COMMANDS.has(i.commandName)) {
+    if (!p?.channelId) return void (await i.reply(ephemeral("I'm not playing anything.")));
+    if (member.voice.channelId !== p.channelId) {
+      return void (await i.reply(ephemeral(`Join <#${p.channelId}> to control the music.`)));
+    }
+    const botChannel = i.guild.channels.cache.get(p.channelId);
+    const denied = botChannel?.isVoiceBased() ? denyFor(botChannel, member) : null;
+    if (denied) return void (await i.reply(ephemeral(denied)));
+  }
+
   switch (i.commandName) {
     case "play": {
       const voice = member.voice.channel;
       if (!voice) return void (await i.reply(ephemeral("Join a voice channel first, then use /play.")));
+      const notAllowed = denyFor(voice, member);
+      if (notAllowed) return void (await i.reply(ephemeral(notAllowed)));
       const existing = players.get(i.guildId);
       // One bot account = one voice channel per server. If it is busy elsewhere, say so rather than yanking it away.
       if (existing?.playing && existing.channelId && existing.channelId !== voice.id) {

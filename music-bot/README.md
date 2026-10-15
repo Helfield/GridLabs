@@ -14,6 +14,14 @@ same bot account as the website's bot.
 Anyone can also turn it up or down just for themselves: right-click the bot in the
 voice channel → **User Volume**.
 
+**Who can control it.** In a temporary voice channel made by the website's lobby, only the
+member who created that channel (or a server administrator) can use `/play`, `/skip`, `/pause`,
+`/resume`, `/stop` and `/volume`; everyone else is told who the owner is. The owner is found
+from the channel itself (they hold Manage Channel on that one channel), so no database is
+involved. `/queue` is open to everyone. In any other voice channel, anyone in the channel can
+control the music. In every channel, the control commands only work for someone sitting in the
+bot's channel.
+
 It leaves by itself two minutes after the queue ends, or 30 seconds after the last
 person leaves its channel. A bot account can only be in one voice channel per server,
 so if it is busy in one channel it tells other people so instead of jumping over.
