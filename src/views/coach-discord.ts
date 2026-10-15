@@ -79,6 +79,7 @@ export function discordPage(
   <div class="ref__meta" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
     <a href="${escapeHtml(link)}" target="_blank" rel="noopener">Open message in Discord ↗</a>
     <span>${rows.length} of 20 reactions
+      <a href="/coach/discord/message/${escapeHtml(messageId)}">Edit</a>
       <button class="linkbtn" type="button" data-add-to="${escapeHtml(messageId)}" data-channel="${escapeHtml(rows[0].channelId)}">+ Add more</button>
     </span>
   </div>
@@ -158,23 +159,69 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
 <script>
 (function () {
   var MAX_ROWS = 20;
+  var KEY = "rr-draft-v1";
+  var PENDING = "rr-pending";
   var panels = document.getElementById("rr-panels");
   var panelTpl = document.getElementById("rr-panel-tpl");
   var rowTpl = document.getElementById("rr-row-tpl");
+
+  // Drafts: what has been typed is kept in this browser, so a refused Create or an
+  // accidental refresh doesn't lose a long list. A panel is dropped from the draft
+  // only once it has been created successfully.
+  function readDraft() {
+    try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; }
+  }
+  function writeDraft(list) {
+    try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {}
+  }
+  function snapshot(panel) {
+    var rows = [];
+    panel.querySelectorAll(".rr-row").forEach(function (r) {
+      rows.push([r.querySelector("[name=emoji]").value, r.querySelector("[name=roleId]").value]);
+    });
+    return {
+      channelId: panel.querySelector("[name=channelId]").value,
+      messageId: panel.querySelector("[name=messageId]").value,
+      text: panel.querySelector("[name=text]").value,
+      rows: rows
+    };
+  }
+  function isEmpty(d) {
+    return !d.channelId && !d.messageId && !d.text && d.rows.every(function (r) { return !r[0] && !r[1]; });
+  }
+  function saveAll() {
+    var list = [];
+    panels.querySelectorAll("section.panel").forEach(function (p) { list.push(snapshot(p)); });
+    writeDraft(list.filter(function (d) { return !isEmpty(d); }));
+  }
 
   function addRow(panel) {
     var rows = panel.querySelector(".rr-rows");
     if (rows.children.length >= MAX_ROWS) {
       alert("Discord allows 20 reactions on one message. Add another panel for more.");
-      return;
+      return null;
     }
-    rows.appendChild(rowTpl.content.firstElementChild.cloneNode(true));
+    var row = rowTpl.content.firstElementChild.cloneNode(true);
+    rows.appendChild(row);
+    return row;
   }
 
   function addPanel(channelId, messageId) {
     var panel = panelTpl.content.firstElementChild.cloneNode(true);
     panel.querySelector(".rr-add-row").addEventListener("click", function () { addRow(panel); });
-    panel.querySelector(".rr-remove").addEventListener("click", function () { panel.remove(); });
+    panel.querySelector(".rr-remove").addEventListener("click", function () { panel.remove(); saveAll(); });
+    panel.addEventListener("input", saveAll);
+    panel.addEventListener("change", saveAll);
+    panel.querySelector("form").addEventListener("submit", function () {
+      saveAll();
+      // Position among the saved (non-empty) drafts, which is what ?done=1 will look up.
+      var pos = 0;
+      for (var i = 0; i < panels.children.length; i++) {
+        if (panels.children[i] === panel) break;
+        if (!isEmpty(snapshot(panels.children[i]))) pos++;
+      }
+      try { localStorage.setItem(PENDING, String(pos)); } catch (e) {}
+    });
     if (channelId) panel.querySelector("[name=channelId]").value = channelId;
     if (messageId) {
       panel.querySelector("[name=messageId]").value = messageId;
@@ -183,6 +230,18 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
     }
     panels.appendChild(panel);
     return panel;
+  }
+
+  function restore(d) {
+    var panel = addPanel(d.channelId, d.messageId);
+    panel.querySelector("[name=text]").value = d.text || "";
+    var rows = panel.querySelectorAll(".rr-row");
+    d.rows.forEach(function (pair, i) {
+      var row = rows[i] || addRow(panel);
+      if (!row) return;
+      row.querySelector("[name=emoji]").value = pair[0] || "";
+      row.querySelector("[name=roleId]").value = pair[1] || "";
+    });
   }
 
   document.getElementById("rr-add-panel").addEventListener("click", function () {
@@ -194,8 +253,109 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
     });
   });
 
-  addPanel();
+  // A successful Create lands here with ?done=1: that panel is finished, so it leaves the draft.
+  var drafts = readDraft();
+  if (/[?&]done=1/.test(location.search)) {
+    var idx = -1;
+    try { idx = parseInt(localStorage.getItem(PENDING), 10); localStorage.removeItem(PENDING); } catch (e) {}
+    if (idx >= 0 && idx < drafts.length) { drafts.splice(idx, 1); writeDraft(drafts); }
+  }
+  if (drafts.length) drafts.forEach(restore); else addPanel();
 })();
 </script>`;
   return layout("Discord reaction roles", body, navUser);
+}
+
+// Edit page for one live message: every emoji/role pair is shown filled in, so
+// a change is a tweak and Save, not a rebuild. Saving makes the message's
+// reaction roles exactly what is on screen.
+export function discordEditPage(
+  navUser: Nav,
+  opts: {
+    enabled: boolean;
+    guildId: string;
+    channelId: string;
+    channelName: string | null;
+    messageId: string;
+    text: string | null; // null: the bot didn't post this message, so its wording isn't ours to edit
+    rows: Array<{ emoji: string; roleId: string }>;
+    roles: GuildRole[];
+    emojis: GuildEmoji[];
+    error: string | null;
+    notice: string | null;
+  },
+): string {
+  const roleOptions = (selected: string) =>
+    opts.roles
+      .map((r) => `<option value="${escapeHtml(r.id)}"${r.id === selected ? " selected" : ""}>${escapeHtml(r.name)}</option>`)
+      .join("");
+  // Show a custom emoji as :name: (what the form accepts); unicode as itself.
+  const emojiText = (key: string): string => {
+    const m = key.match(/^(\w+):(\d+)$/);
+    if (!m) return key;
+    const hit = opts.emojis.find((e) => e.id === m[2]);
+    return hit ? `:${hit.name}:` : key;
+  };
+  const row = (emoji: string, roleId: string) => `
+      <div class="rr-row" style="display:grid;grid-template-columns:130px 1fr auto;gap:10px;margin-bottom:10px;align-items:center">
+        <input type="text" name="emoji" class="rr-in" value="${escapeHtml(emoji)}" placeholder="Emoji or :name:" list="rr-emojis" autocomplete="off">
+        <select name="roleId" class="rr-in"><option value="">— role —</option>${roleOptions(roleId)}</select>
+        <button class="linkbtn rr-del" type="button" style="color:var(--warn)" title="Remove this row">✕</button>
+      </div>`;
+  const link = `https://discord.com/channels/${opts.guildId}/${opts.channelId}/${opts.messageId}`;
+  const emojiList = opts.emojis.map((e) => `<option value=":${escapeHtml(e.name)}:"></option>`).join("");
+
+  const body = `
+${CSS}
+<a class="backlink" href="/coach/discord">← Reaction roles</a>
+<div class="phead">
+  <div>
+    <span class="eyebrow">Coaching</span>
+    <h1>Edit reaction roles</h1>
+    <p class="phead__sub">${opts.channelName ? `#${escapeHtml(opts.channelName)} · ` : ""}<a href="${escapeHtml(link)}" target="_blank" rel="noopener">Open message in Discord ↗</a></p>
+  </div>
+</div>
+${opts.notice ? `<p class="hint" style="color:var(--pb)">${escapeHtml(opts.notice)}</p>` : ""}
+${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.error)}</p>` : ""}
+<datalist id="rr-emojis">${emojiList}</datalist>
+<section class="panel" style="max-width:640px">
+  <div class="panel__body">
+    <form action="/coach/discord/message/${escapeHtml(opts.messageId)}" method="post" id="rr-edit">
+      ${
+        opts.text === null
+          ? `<p class="hint">This message wasn't posted by the bot, so its text can't be changed here — only the emoji and roles.</p>`
+          : `<label class="field">
+        <span class="field__label">Message text</span>
+        <input type="text" name="text" class="rr-in" value="${escapeHtml(opts.text)}" placeholder="e.g. Pick your SR rank:">
+      </label>`
+      }
+      <span class="field__label">Emoji → role</span>
+      <div class="rr-rows">${opts.rows.map((r) => row(emojiText(r.emoji), r.roleId)).join("")}</div>
+      <button class="btn btn--ghost btn--sm" type="button" id="rr-add-row" style="margin-bottom:12px">+ Add row</button>
+      <p class="hint">Change an emoji or role in place, remove a row with ✕, or add rows (up to 20 per message). Save updates the message and the bot's reactions; everyone who already has a role keeps it. Members who click a <em>new</em> emoji from now on get its role.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+        <button class="btn btn--discord" style="width:auto;padding-left:26px;padding-right:26px" type="submit"${opts.enabled ? "" : " disabled"}>Save changes</button>
+      </div>
+    </form>
+    <form action="/coach/discord/message/${escapeHtml(opts.messageId)}/delete" method="post" style="margin-top:14px" onsubmit="return confirm('Stop every emoji on this message giving roles? The message itself stays in Discord.')">
+      <button class="linkbtn" type="submit" style="color:var(--warn)">Stop all reaction roles on this message</button>
+    </form>
+  </div>
+</section>
+<template id="rr-row-tpl">${row("", "")}</template>
+<script>
+(function () {
+  var form = document.getElementById("rr-edit");
+  var rows = form.querySelector(".rr-rows");
+  var tpl = document.getElementById("rr-row-tpl");
+  form.addEventListener("click", function (e) {
+    if (e.target.classList.contains("rr-del")) e.target.closest(".rr-row").remove();
+  });
+  document.getElementById("rr-add-row").addEventListener("click", function () {
+    if (rows.children.length >= 20) { alert("Discord allows 20 reactions on one message."); return; }
+    rows.appendChild(tpl.content.firstElementChild.cloneNode(true));
+  });
+})();
+</script>`;
+  return layout("Edit reaction roles", body, navUser);
 }

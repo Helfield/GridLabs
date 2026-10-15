@@ -13,9 +13,9 @@ import {
 import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../views/coach-pages";
 import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
 import { promoteBestLaps } from "../db/promotions";
-import { discordPage } from "../views/coach-discord";
+import { discordEditPage, discordPage } from "../views/coach-discord";
 import { botEnabled, DiscordApiError, guildId, listAssignableRoles, listGuildEmojis, listTextChannels, parseEmoji } from "../discord/bot-api";
-import { attachToMessage, createPanel, deleteMapping, emojisOnMessage, listReactionRoles, MAX_REACTIONS_PER_MESSAGE, type RolePair } from "../discord/reaction-roles";
+import { attachToMessage, createPanel, deleteMapping, deleteMessageMappings, emojisOnMessage, getPanel, listReactionRoles, mappingsForMessage, MAX_REACTIONS_PER_MESSAGE, syncMessage, type RolePair } from "../discord/reaction-roles";
 
 export const coachRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -192,6 +192,39 @@ coachRoutes.get("/discord", async (c) => {
   );
 });
 
+type FormBody = Record<string, string | File | (string | File)[]>;
+
+/** The emoji/role rows of a reaction-role form, checked against the server's real roles and emoji. */
+async function readPairs(body: FormBody): Promise<{ pairs: RolePair[] } | { error: string }> {
+  const one = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const many = (v: unknown) => (Array.isArray(v) ? v : v === undefined ? [] : [v]).map(one);
+  // Only roles the page offers, so a hand-built request can't hand out a role it never showed.
+  const [roles, customEmojis] = await Promise.all([listAssignableRoles(), listGuildEmojis()]);
+  const emojis = many(body.emoji);
+  const roleIds = many(body.roleId);
+  const pairs: RolePair[] = [];
+  for (let i = 0; i < emojis.length; i++) {
+    if (!emojis[i] && !roleIds[i]) continue;
+    const emoji = parseEmoji(emojis[i] ?? "", customEmojis);
+    const role = roles.find((r) => r.id === roleIds[i]);
+    if (!emoji || !role) return { error: `Row ${i + 1}: needs a real emoji and a role.` };
+    if (pairs.some((p) => p.emoji === emoji)) return { error: `Row ${i + 1}: that emoji is already used.` };
+    pairs.push({ emoji, roleId: role.id, roleName: role.name });
+  }
+  if (pairs.length === 0) return { error: "Add at least one emoji and role." };
+  return { pairs };
+}
+
+/** Discord's own reason for a refusal ("Missing Access", "Unknown Emoji", ...). */
+function discordReason(err: unknown): string {
+  if (!(err instanceof DiscordApiError)) return "";
+  try {
+    return (JSON.parse(err.body) as { message?: string }).message ?? "";
+  } catch {
+    return "";
+  }
+}
+
 coachRoutes.post("/discord/panel", async (c) => {
   const body = await c.req.parseBody({ all: true });
   const one = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -204,20 +237,9 @@ coachRoutes.post("/discord/panel", async (c) => {
   if (!/^\d+$/.test(channelId)) return fail("Pick a channel.");
   if (messageId && !/^\d+$/.test(messageId)) return fail("The message ID should be a number.");
 
-  // Only roles the page offers, so a hand-built request can't hand out a role it never showed.
-  const [roles, customEmojis] = await Promise.all([listAssignableRoles(), listGuildEmojis()]);
-  const emojis = many(body.emoji);
-  const roleIds = many(body.roleId);
-  const pairs: RolePair[] = [];
-  for (let i = 0; i < emojis.length; i++) {
-    if (!emojis[i] && !roleIds[i]) continue;
-    const emoji = parseEmoji(emojis[i] ?? "", customEmojis);
-    const role = roles.find((r) => r.id === roleIds[i]);
-    if (!emoji || !role) return fail(`Row ${i + 1}: needs a real emoji and a role.`);
-    if (pairs.some((p) => p.emoji === emoji)) return fail(`Row ${i + 1}: that emoji is already used.`);
-    pairs.push({ emoji, roleId: role.id, roleName: role.name });
-  }
-  if (pairs.length === 0) return fail("Add at least one emoji and role.");
+  const read = await readPairs(body);
+  if ("error" in read) return fail(read.error);
+  const pairs = read.pairs;
   // Discord stops a message at 20 different reactions; count what this message already carries.
   const already = messageId ? (await emojisOnMessage(messageId)).filter((e) => !pairs.some((p) => p.emoji === e)).length : 0;
   if (already + pairs.length > MAX_REACTIONS_PER_MESSAGE) {
@@ -229,15 +251,7 @@ coachRoutes.post("/discord/panel", async (c) => {
     else await createPanel(channelId, one(body.text), pairs);
   } catch (err) {
     console.error("Creating reaction roles failed:", err);
-    // Discord's own reason ("Missing Access", "Unknown Emoji", ...) is far more useful than a guess.
-    let reason = "";
-    if (err instanceof DiscordApiError) {
-      try {
-        reason = (JSON.parse(err.body) as { message?: string }).message ?? "";
-      } catch {
-        reason = "";
-      }
-    }
+    const reason = discordReason(err);
     return fail(
       `Discord refused${reason ? `: ${reason}` : ""}. Check the bot can see that channel, send messages and add reactions, and that the emoji exists.`,
     );
@@ -247,5 +261,78 @@ coachRoutes.post("/discord/panel", async (c) => {
 
 coachRoutes.post("/discord/mapping/:id/delete", async (c) => {
   await deleteMapping(Number(c.req.param("id")));
+  return c.redirect("/coach/discord");
+});
+
+// Edit one live message in place: its pairs are shown filled in and Save makes
+// the message's reaction roles exactly what was submitted.
+async function editPage(c: any, messageId: string, extra: { error?: string | null; notice?: string | null } = {}) {
+  const user = await getUserById(c.get("userId"));
+  if (!user) return c.redirect("/login");
+  const rows = await mappingsForMessage(messageId);
+  if (rows.length === 0) return c.redirect("/coach/discord?error=" + encodeURIComponent("That message has no reaction roles."));
+  const enabled = botEnabled();
+  let roles: Awaited<ReturnType<typeof listAssignableRoles>> = [];
+  let channels: Awaited<ReturnType<typeof listTextChannels>> = [];
+  let emojis: Awaited<ReturnType<typeof listGuildEmojis>> = [];
+  let error = extra.error ?? null;
+  if (enabled) {
+    try {
+      [roles, channels, emojis] = await Promise.all([listAssignableRoles(), listTextChannels(), listGuildEmojis()]);
+    } catch (err) {
+      console.error("Loading Discord roles/channels failed:", err);
+      error = error ?? "Couldn't load the server's roles and channels.";
+    }
+  }
+  const panel = await getPanel(messageId);
+  return c.html(
+    discordEditPage(user, {
+      enabled,
+      guildId: guildId(),
+      channelId: rows[0].channelId,
+      channelName: channels.find((ch) => ch.id === rows[0].channelId)?.name ?? null,
+      messageId,
+      text: panel ? panel.text : null,
+      rows: rows.map((r) => ({ emoji: r.emoji, roleId: r.roleId })),
+      roles,
+      emojis,
+      error,
+      notice: extra.notice ?? null,
+    }),
+  );
+}
+
+coachRoutes.get("/discord/message/:messageId", async (c) => {
+  const messageId = c.req.param("messageId");
+  if (!/^\d+$/.test(messageId)) return c.redirect("/coach/discord");
+  return editPage(c, messageId, { notice: c.req.query("saved") ? "Saved." : null });
+});
+
+coachRoutes.post("/discord/message/:messageId", async (c) => {
+  const messageId = c.req.param("messageId");
+  if (!/^\d+$/.test(messageId)) return c.redirect("/coach/discord");
+  if (!botEnabled()) return editPage(c, messageId, { error: "The bot is off." });
+  const body = (await c.req.parseBody({ all: true })) as FormBody;
+  const read = await readPairs(body);
+  if ("error" in read) return editPage(c, messageId, { error: read.error });
+  if (read.pairs.length > MAX_REACTIONS_PER_MESSAGE) {
+    return editPage(c, messageId, { error: `Discord allows ${MAX_REACTIONS_PER_MESSAGE} reactions per message.` });
+  }
+  const text = typeof body.text === "string" ? body.text.trim() : undefined;
+  try {
+    await syncMessage(messageId, read.pairs, text);
+  } catch (err) {
+    console.error("Saving reaction roles failed:", err);
+    const reason = discordReason(err);
+    return editPage(c, messageId, {
+      error: `Discord refused${reason ? `: ${reason}` : ""}. Some changes may have been saved — the list below shows what is live.`,
+    });
+  }
+  return c.redirect(`/coach/discord/message/${messageId}?saved=1`);
+});
+
+coachRoutes.post("/discord/message/:messageId/delete", async (c) => {
+  const messageId = c.req.param("messageId");
+  if (/^\d+$/.test(messageId)) await deleteMessageMappings(messageId);
   return c.redirect("/coach/discord");
 });
