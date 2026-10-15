@@ -27,4 +27,11 @@ export async function ensureSchema(): Promise<void> {
     "created_at" timestamp DEFAULT now() NOT NULL
   )`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "reaction_roles_message_emoji_idx" ON "reaction_roles" ("message_id", "emoji")`);
+  // Text of bot-posted reaction-role messages, so they can be edited in place.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "reaction_panels" (
+    "message_id" text PRIMARY KEY NOT NULL,
+    "channel_id" text NOT NULL,
+    "text" text DEFAULT '' NOT NULL,
+    "created_at" timestamp DEFAULT now() NOT NULL
+  )`);
 }

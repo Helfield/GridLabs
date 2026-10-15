@@ -115,3 +115,12 @@ export const reactionRoles = pgTable(
   },
   (t) => ({ messageEmoji: uniqueIndex("reaction_roles_message_emoji_idx").on(t.messageId, t.emoji) }),
 );
+
+// The intro text of a message the bot itself posted (see createPanel), so the
+// message can be rewritten when its reaction roles are edited.
+export const reactionPanels = pgTable("reaction_panels", {
+  messageId: text("message_id").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  text: text("text").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
