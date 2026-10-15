@@ -34,4 +34,14 @@ export async function ensureSchema(): Promise<void> {
     "text" text DEFAULT '' NOT NULL,
     "created_at" timestamp DEFAULT now() NOT NULL
   )`);
+  // Bot runtime settings and the temporary voice channels it has made.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "bot_settings" (
+    "key" text PRIMARY KEY NOT NULL,
+    "value" text NOT NULL
+  )`);
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "temp_voice_channels" (
+    "channel_id" text PRIMARY KEY NOT NULL,
+    "owner_id" text NOT NULL,
+    "created_at" timestamp DEFAULT now() NOT NULL
+  )`);
 }

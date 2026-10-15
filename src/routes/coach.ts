@@ -14,7 +14,9 @@ import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../view
 import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
 import { promoteBestLaps } from "../db/promotions";
 import { discordEditPage, discordPage } from "../views/coach-discord";
-import { botEnabled, DiscordApiError, guildId, listAssignableRoles, listGuildEmojis, listTextChannels, parseEmoji } from "../discord/bot-api";
+import { botEnabled, botFetch, DiscordApiError, guildId, listAssignableRoles, listChannelsByKind, listGuildEmojis, listTextChannels, parseEmoji } from "../discord/bot-api";
+import { clearSetting, getSetting, setSetting } from "../discord/settings";
+import { LOBBY_SETTING } from "../discord/voice";
 import { attachToMessage, createPanel, deleteMapping, deleteMessageMappings, emojisOnMessage, getPanel, listReactionRoles, mappingsForMessage, MAX_REACTIONS_PER_MESSAGE, syncMessage, type RolePair } from "../discord/reaction-roles";
 
 export const coachRoutes = new Hono<{ Variables: AppVariables }>();
@@ -175,11 +177,11 @@ coachRoutes.get("/discord", async (c) => {
   const enabled = botEnabled();
   let error: string | null = null;
   let roles: Awaited<ReturnType<typeof listAssignableRoles>> = [];
-  let channels: Awaited<ReturnType<typeof listTextChannels>> = [];
+  let kinds: Awaited<ReturnType<typeof listChannelsByKind>> = { text: [], voice: [], categories: [] };
   let emojis: Awaited<ReturnType<typeof listGuildEmojis>> = [];
   if (enabled) {
     try {
-      [roles, channels, emojis] = await Promise.all([listAssignableRoles(), listTextChannels(), listGuildEmojis()]);
+      [roles, kinds, emojis] = await Promise.all([listAssignableRoles(), listChannelsByKind(), listGuildEmojis()]);
     } catch (err) {
       console.error("Loading Discord roles/channels failed:", err);
       error = "Couldn't load the server's roles and channels. Is the bot invited to the server and is DISCORD_GUILD_ID right?";
@@ -188,7 +190,17 @@ coachRoutes.get("/discord", async (c) => {
   const notice = c.req.query("done") ? "Done — the reaction roles are live." : null;
   error = c.req.query("error") ?? error;
   return c.html(
-    discordPage(user, { enabled, guildId: guildId(), notice, error, mappings: await listReactionRoles(), roles, channels, emojis }),
+    discordPage(user, { enabled, guildId: guildId(), notice, error, mappings: await listReactionRoles(),
+    roles,
+    channels: kinds.text,
+    emojis,
+    voice: {
+      lobbyId: await getSetting(LOBBY_SETTING),
+      voiceChannels: kinds.voice,
+      categories: kinds.categories,
+      notice: c.req.query("voice") ?? null,
+    },
+  }),
   );
 });
 
@@ -335,4 +347,48 @@ coachRoutes.post("/discord/message/:messageId/delete", async (c) => {
   const messageId = c.req.param("messageId");
   if (/^\d+$/.test(messageId)) await deleteMessageMappings(messageId);
   return c.redirect("/coach/discord");
+});
+
+// Temporary voice channels: which voice channel is the join-to-create lobby.
+// The bot's side of it runs from discord/voice.ts.
+coachRoutes.post("/discord/voice", async (c) => {
+  const body = await c.req.parseBody();
+  const one = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const done = (msg: string) => c.redirect(`/coach/discord?voice=${encodeURIComponent(msg)}`);
+  const fail = (msg: string) => c.redirect(`/coach/discord?error=${encodeURIComponent(msg)}`);
+  if (!botEnabled()) return fail("The bot is off.");
+
+  const action = one(body.action);
+  if (action === "off") {
+    await clearSetting(LOBBY_SETTING);
+    return done("Temporary voice channels are off. Channels already made will still close when empty.");
+  }
+  if (action === "set") {
+    const channelId = one(body.channelId);
+    // Only a voice channel the server really has, so a hand-built request can't point the lobby at a text channel.
+    const { voice } = await listChannelsByKind();
+    if (!voice.some((v) => v.id === channelId)) return fail("Pick a voice channel from the list.");
+    await setSetting(LOBBY_SETTING, channelId);
+    return done("Lobby set. Joining it now creates a channel.");
+  }
+  if (action === "create") {
+    const name = one(body.name).slice(0, 100) || "Create a channel";
+    const categoryId = one(body.categoryId);
+    if (categoryId && !/^\d+$/.test(categoryId)) return fail("Pick a category from the list.");
+    try {
+      const channel = await botFetch<{ id: string }>("POST", `/guilds/${guildId()}/channels`, {
+        name,
+        type: 2,
+        parent_id: categoryId || undefined,
+      });
+      if (!channel) return fail("Discord returned no channel.");
+      await setSetting(LOBBY_SETTING, channel.id);
+    } catch (err) {
+      console.error("Creating the voice lobby failed:", err);
+      const reason = discordReason(err);
+      return fail(`Discord refused${reason ? `: ${reason}` : ""}. The bot needs the Manage Channels permission.`);
+    }
+    return done("Lobby channel created. Joining it now creates a channel.");
+  }
+  return fail("Unknown action.");
 });
