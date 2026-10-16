@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
-import { getSignedCookie, setSignedCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import { db } from "../db/client";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -19,14 +19,9 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-// The login cookie holds the user id, signed (HMAC) with a server-side secret
-// so it can't be forged by editing it -- an unsigned id would let anyone
-// become any user, coach included, by typing a number. SESSION_SECRET is
-// preferred; DISCORD_CLIENT_SECRET (already required, and just as private)
-// is the fallback so a deploy without the new variable still works.
-const SESSION_COOKIE = "gl_session";
-const LEGACY_SESSION_COOKIE = "session_user_id"; // the old unsigned cookie, now ignored and cleared
-
+// Signs the session cookie so it can't be forged by editing the user id.
+// SESSION_SECRET is preferred; the OAuth client secret is a fallback so an
+// existing deploy keeps working until one is set.
 function sessionSecret(): string {
   return process.env.SESSION_SECRET || requiredEnv("DISCORD_CLIENT_SECRET");
 }
@@ -194,33 +189,30 @@ authRoutes.get("/discord/callback", async (c) => {
   // Minimal session: a signed cookie holding the user id. Swap for a
   // proper session table / JWT if you want revocable sessions later --
   // fine as a starting point for Phase 1.
-  await setSignedCookie(c, SESSION_COOKIE, String(userId), sessionSecret(), {
+  await setSignedCookie(c, "session_user_id", String(userId), sessionSecret(), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "Lax",
     maxAge: 60 * 60 * 24 * 30, // 30 days
     path: "/",
   });
-  setCookie(c, LEGACY_SESSION_COOKIE, "", { maxAge: 0, path: "/" });
 
   return c.redirect("/dashboard");
 });
 
 authRoutes.post("/logout", (c) => {
-  setCookie(c, SESSION_COOKIE, "", { maxAge: 0, path: "/" });
-  setCookie(c, LEGACY_SESSION_COOKIE, "", { maxAge: 0, path: "/" });
+  deleteCookie(c, "session_user_id", { path: "/" });
   return c.redirect("/");
 });
 
 // Simple auth middleware other routes can use: attaches c.get("userId")
 // or responds 401.
 export async function requireAuth(c: Context<{ Variables: AppVariables }>, next: Next) {
-  // false means the cookie was present but its signature didn't verify.
-  const userId = await getSignedCookie(c, sessionSecret(), SESSION_COOKIE);
-  const id = userId ? Number(userId) : NaN;
-  if (!Number.isInteger(id) || id < 1) {
+  // false = present but tampered with; undefined = absent. Both mean no session.
+  const userId = await getSignedCookie(c, sessionSecret(), "session_user_id");
+  if (!userId) {
     return c.redirect("/login");
   }
-  c.set("userId", id);
+  c.set("userId", Number(userId));
   await next();
 }

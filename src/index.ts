@@ -14,6 +14,7 @@ import { leagueRoutes } from "./routes/league";
 import { leaderboardEnabled, syncAllLeaderboards } from "./discord/leaderboard";
 import { promoteBestLaps } from "./db/promotions";
 import { ensureSchema } from "./db/ensure-schema";
+import { startBot } from "./discord/gateway";
 
 // Before anything can query: add any column this version needs. A
 // failure is logged rather than fatal -- if the database is briefly
@@ -111,5 +112,9 @@ if (leaderboardEnabled()) {
 } else {
   console.log("Discord leaderboard: off (DISCORD_LEADERBOARD_WEBHOOK_URL not set).");
 }
+
+// The bot's live Discord connection (reaction roles). Needs the tables
+// ensureSchema made above; does nothing unless DISCORD_BOT_TOKEN is set.
+startBot();
 
 export default app;

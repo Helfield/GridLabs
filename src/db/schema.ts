@@ -202,3 +202,44 @@ export const leagueResults = pgTable(
   },
   (t) => ({ perDriver: uniqueIndex("league_results_event_user_idx").on(t.eventId, t.userId) }),
 );
+// Reaction roles: reacting to `messageId` with `emoji` gives a member `roleId`
+// (removing the reaction takes it away). `emoji` is the unicode character, or
+// "name:id" for a custom server emoji. Managed from /coach/discord and acted on
+// by the bot in discord/gateway.ts.
+export const reactionRoles = pgTable(
+  "reaction_roles",
+  {
+    id: serial("id").primaryKey(),
+    channelId: text("channel_id").notNull(),
+    messageId: text("message_id").notNull(),
+    emoji: text("emoji").notNull(),
+    roleId: text("role_id").notNull(),
+    roleName: text("role_name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({ messageEmoji: uniqueIndex("reaction_roles_message_emoji_idx").on(t.messageId, t.emoji) }),
+);
+
+// The intro text of a message the bot itself posted (see createPanel), so the
+// message can be rewritten when its reaction roles are edited.
+export const reactionPanels = pgTable("reaction_panels", {
+  messageId: text("message_id").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  text: text("text").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Small key/value settings the bot reads at runtime and /coach/discord edits
+// (currently: voice_lobby, the channel members join to get their own voice channel).
+export const botSettings = pgTable("bot_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
+// Voice channels the bot created for members, so it can delete them once empty
+// (and still find them after a restart).
+export const tempVoiceChannels = pgTable("temp_voice_channels", {
+  channelId: text("channel_id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
