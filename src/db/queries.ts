@@ -20,7 +20,7 @@ export type StudentSummary = {
 
 export async function getAllStudents(): Promise<StudentSummary[]> {
   const students = await db.query.users.findMany({
-    where: eq(users.role, "student"),
+    where: inArray(users.role, ["student", "moderator"]),
   });
   const stats = await db
     .select({
@@ -94,7 +94,7 @@ export async function getPublicReferenceLaps() {
 
 export async function getStudentDetail(studentId: number) {
   const student = await db.query.users.findFirst({
-    where: and(eq(users.id, studentId), eq(users.role, "student")),
+    where: and(eq(users.id, studentId), inArray(users.role, ["student", "moderator"])),
   });
   if (!student) return null;
   const studentSessions = await getSessionsForUser(studentId);

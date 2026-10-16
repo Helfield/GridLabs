@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../db/client";
-import { users, sessions, referenceLaps } from "../db/schema";
+import { users, sessions, referenceLaps, raceResults } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { getAvailableReferenceLapsWithSetupFlag, getReferenceLapForDownload, getSetupForReferenceLap, saveSetup } from "../db/queries";
 import { sanitiseSetup } from "../setups";
@@ -92,6 +92,50 @@ apiRoutes.post("/sessions", async (c) => {
   }
 
   return c.json({ id: created.id }, 201);
+});
+
+// Where a race finished, sent by the desktop app when the driver takes
+// the flag and again when the session ends (same raceKey, fuller
+// classification). Only ever used to cross-check league results.
+apiRoutes.post("/race-results", async (c) => {
+  const userId = c.get("apiUserId");
+  const body = await c.req.json().catch(() => null);
+  const int = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : null);
+  const place = int(body?.place);
+  if (
+    !body ||
+    typeof body.raceKey !== "string" ||
+    !body.raceKey ||
+    body.raceKey.length > 64 ||
+    typeof body.track !== "string" ||
+    typeof body.car !== "string" ||
+    place === null ||
+    place < 1 ||
+    place > 200
+  ) {
+    return c.json({ error: "Expected JSON body with at least: raceKey, track, car, place" }, 400);
+  }
+  // The classification is just a table of the field; keep it modest in size.
+  const classification = Array.isArray(body.classification) ? body.classification.slice(0, 200) : null;
+  const values = {
+    userId,
+    raceKey: body.raceKey,
+    track: body.track,
+    car: body.car,
+    place,
+    classPlace: int(body.classPlace),
+    finishStatus: int(body.finishStatus) ?? 0,
+    laps: int(body.laps),
+    bestLapSeconds: typeof body.bestLap === "number" && Number.isFinite(body.bestLap) ? body.bestLap : null,
+    fieldSize: int(body.fieldSize),
+    classification,
+    updatedAt: new Date(),
+  };
+  await db
+    .insert(raceResults)
+    .values(values)
+    .onConflictDoUpdate({ target: [raceResults.userId, raceResults.raceKey], set: values });
+  return c.json({ ok: true }, 201);
 });
 
 // Upload a reference lap (the full per-bin JSON the local app already

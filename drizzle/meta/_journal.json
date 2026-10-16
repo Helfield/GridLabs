@@ -43,6 +43,13 @@
       "when": 1791851867571,
       "tag": "0005_setup_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792200000000,
+      "tag": "0006_leagues",
+      "breakpoints": true
     }
   ]
 }

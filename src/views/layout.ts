@@ -119,6 +119,7 @@ function navBar(user: NavUser): string {
         <a href="${home}">${homeLabel}</a>
         <a href="/library">Reference Laps</a>
         <a href="/download">Download</a>
+        <a href="/league">League</a>
         ${user.role === "coach" ? `<a href="/coach/reference-laps">Upload</a>` : ""}
         <a href="/account">Account</a>
       </nav>
@@ -263,11 +264,11 @@ p{margin:0}
   display:block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;
   letter-spacing:.13em;color:var(--muted);margin-bottom:7px;
 }
-.field input{
+.field input,.field select,.field textarea{
   width:100%;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm);
   padding:11px 13px;color:var(--text);font:inherit;font-size:14.5px;
 }
-.field input:focus{outline:none;border-color:var(--fastest);box-shadow:0 0 0 3px rgba(177,75,255,.15)}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--fastest);box-shadow:0 0 0 3px rgba(177,75,255,.15)}
 
 .empty{text-align:center;padding:38px 20px;color:var(--dim);font-size:14px}
 .empty strong{display:block;color:var(--muted);font-weight:500;margin-bottom:5px}

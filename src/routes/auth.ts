@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
+import { getSignedCookie, setSignedCookie, setCookie } from "hono/cookie";
 import { db } from "../db/client";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -17,6 +17,18 @@ function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
+}
+
+// The login cookie holds the user id, signed (HMAC) with a server-side secret
+// so it can't be forged by editing it -- an unsigned id would let anyone
+// become any user, coach included, by typing a number. SESSION_SECRET is
+// preferred; DISCORD_CLIENT_SECRET (already required, and just as private)
+// is the fallback so a deploy without the new variable still works.
+const SESSION_COOKIE = "gl_session";
+const LEGACY_SESSION_COOKIE = "session_user_id"; // the old unsigned cookie, now ignored and cleared
+
+function sessionSecret(): string {
+  return process.env.SESSION_SECRET || requiredEnv("DISCORD_CLIENT_SECRET");
 }
 
 export const authRoutes = new Hono();
@@ -140,7 +152,7 @@ authRoutes.get("/discord/callback", async (c) => {
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
-  const role = coachIds.includes(profile.id) ? "coach" : "student";
+  const isCoachId = coachIds.includes(profile.id);
 
   // Create or update the account. `name`/`email` from our own signup form
   // take priority if provided; Discord's profile fills in gaps.
@@ -156,7 +168,11 @@ authRoutes.get("/discord/callback", async (c) => {
         lastLoginAt: new Date(),
         discordUsername: profile.username,
         discordAvatarUrl: avatarUrl,
-        role,
+        // Coaches come from DISCORD_COACH_IDS and are re-checked at every
+        // login. A moderator is promoted from the League staff page and
+        // must survive a login; only someone who is no longer a coach
+        // drops back to student.
+        role: isCoachId ? "coach" : existing.role === "moderator" ? "moderator" : "student",
       })
       .where(eq(users.id, existing.id));
     userId = existing.id;
@@ -169,7 +185,7 @@ authRoutes.get("/discord/callback", async (c) => {
         discordId: profile.id,
         discordUsername: profile.username,
         discordAvatarUrl: avatarUrl,
-        role,
+        role: isCoachId ? "coach" : "student",
       })
       .returning({ id: users.id });
     userId = created.id;
@@ -178,29 +194,33 @@ authRoutes.get("/discord/callback", async (c) => {
   // Minimal session: a signed cookie holding the user id. Swap for a
   // proper session table / JWT if you want revocable sessions later --
   // fine as a starting point for Phase 1.
-  setCookie(c, "session_user_id", String(userId), {
+  await setSignedCookie(c, SESSION_COOKIE, String(userId), sessionSecret(), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "Lax",
     maxAge: 60 * 60 * 24 * 30, // 30 days
     path: "/",
   });
+  setCookie(c, LEGACY_SESSION_COOKIE, "", { maxAge: 0, path: "/" });
 
   return c.redirect("/dashboard");
 });
 
 authRoutes.post("/logout", (c) => {
-  setCookie(c, "session_user_id", "", { maxAge: 0, path: "/" });
+  setCookie(c, SESSION_COOKIE, "", { maxAge: 0, path: "/" });
+  setCookie(c, LEGACY_SESSION_COOKIE, "", { maxAge: 0, path: "/" });
   return c.redirect("/");
 });
 
 // Simple auth middleware other routes can use: attaches c.get("userId")
 // or responds 401.
 export async function requireAuth(c: Context<{ Variables: AppVariables }>, next: Next) {
-  const userId = getCookie(c, "session_user_id");
-  if (!userId) {
+  // false means the cookie was present but its signature didn't verify.
+  const userId = await getSignedCookie(c, sessionSecret(), SESSION_COOKIE);
+  const id = userId ? Number(userId) : NaN;
+  if (!Number.isInteger(id) || id < 1) {
     return c.redirect("/login");
   }
-  c.set("userId", Number(userId));
+  c.set("userId", id);
   await next();
 }

@@ -10,6 +10,7 @@ import { landingPage } from "./views/landing";
 import { sessionRoutes } from "./routes/session";
 import { libraryRoutes } from "./routes/library";
 import { downloadRoutes } from "./routes/download";
+import { leagueRoutes } from "./routes/league";
 import { leaderboardEnabled, syncAllLeaderboards } from "./discord/leaderboard";
 import { promoteBestLaps } from "./db/promotions";
 import { ensureSchema } from "./db/ensure-schema";
@@ -57,6 +58,7 @@ app.route("/api", apiRoutes);
 app.route("/session", sessionRoutes);
 app.route("/library", libraryRoutes);
 app.route("/download", downloadRoutes);
+app.route("/league", leagueRoutes);
 
 app.get("/", (c) => {
   return c.html(landingPage(DISCORD_INVITE_URL));
