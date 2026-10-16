@@ -9,6 +9,11 @@ import {
   getPublicReferenceLapDetail,
 } from "../db/queries";
 import { lapChecks } from "../db/promotions";
+import { deleteReferenceLap, setSessionExcluded } from "../db/queries";
+import { afterModeration } from "./session";
+import { db } from "../db/client";
+import { referenceLaps } from "../db/schema";
+import { eq } from "drizzle-orm";
 import { referenceLapPage } from "../views/reference-lap-page";
 import { trackLibraryPage, trackDetailPage } from "../views/library-pages";
 
@@ -30,7 +35,9 @@ libraryRoutes.get("/track/:track", async (c) => {
   if (!user) return c.redirect("/login");
   const track = decodeURIComponent(c.req.param("track"));
   const { classes, sampleData } = await getPublicLapsForTrack(track);
-  return c.html(trackDetailPage(user, track, classes, sampleData));
+  const q = c.req.query("removed");
+  const notice = q === "dq" ? "removed-dq" : q === "1" ? "removed" : null;
+  return c.html(trackDetailPage(user, track, classes, sampleData, notice));
 });
 
 // A reference lap, opened up: the same telemetry breakdown a driver sees
@@ -48,6 +55,35 @@ libraryRoutes.get("/lap/:id", async (c) => {
 
   const checks = lapChecks(detail.lap.lapTimeSeconds, detail.lap.data);
   return c.html(referenceLapPage(user, detail, checks));
+});
+
+// Coach-only: take a lap out of the reference library. A lap that was
+// published automatically comes from a driver's session, and the site
+// republishes the fastest valid lap on every refresh -- so removing it
+// without more would just bring it back. Its source session is therefore
+// disqualified as well (reversible from that session's page); a lap a coach
+// typed in simply goes.
+libraryRoutes.post("/lap/:id/remove", async (c) => {
+  const user = await getUserById(c.get("userId"));
+  if (!user || user.role !== "coach") return c.text("Not found.", 404);
+
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.text("Not found.", 404);
+
+  const lap = await db.query.referenceLaps.findFirst({
+    where: eq(referenceLaps.id, id),
+    columns: { id: true, track: true, autoPromoted: true, sourceSessionId: true },
+  });
+  if (!lap) return c.text("Reference lap not found.", 404);
+
+  const disqualify = lap.autoPromoted && lap.sourceSessionId !== null;
+  if (disqualify) {
+    await setSessionExcluded(lap.sourceSessionId as number, true, "Removed from the reference library by a coach");
+  }
+  await deleteReferenceLap(id);
+  await afterModeration(lap.track);
+
+  return c.redirect(`/library/track/${encodeURIComponent(lap.track)}?removed=${disqualify ? "dq" : "1"}`);
 });
 
 // Serve the lap as a .json file the app's "Import lap" button accepts.

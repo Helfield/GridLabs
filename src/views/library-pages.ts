@@ -27,6 +27,8 @@ export type LibraryLap = {
   label: string;
   lapTimeSeconds: number | null;
   createdAt: Date;
+  autoPromoted: boolean;
+  sourceSessionId: number | null;
 };
 
 /**
@@ -152,7 +154,17 @@ ${LIBRARY_CSS}`;
   return layout("Reference laps", body, navUser);
 }
 
-export function trackDetailPage(navUser: Nav, track: string, classes: ClassGroup[], sampleData: unknown | null): string {
+export function trackDetailPage(
+  navUser: Nav,
+  track: string,
+  classes: ClassGroup[],
+  sampleData: unknown | null,
+  notice: "removed" | "removed-dq" | null = null,
+): string {
+  const isCoach = navUser.role === "coach";
+  const noticeHtml = notice
+    ? `<section class="panel" style="margin-bottom:18px;border-color:var(--pb)"><div class="panel__body"><strong style="color:var(--pb)">Lap removed.</strong> ${notice === "removed-dq" ? "It came from a driver's session, so that lap was also disqualified (it's off the leaderboard and won't be published again). You can restore it from the lap's session page." : ""}</div></section>`
+    : "";
   const lapCount = classes.reduce((n, c) => n + c.laps.length, 0);
 
   const classPanels =
@@ -178,7 +190,7 @@ ${c.laps
           <td><div class="driver__name"><a class="lap-link" href="/library/lap/${l.id}">${escapeHtml(l.label)}</a>${i === 0 ? ` <span class="tag tag--fastest">Fastest</span>` : ""}</div></td>
           <td style="color:var(--muted)">${escapeHtml(l.carDisplay || l.car)}</td>
           <td class="num col-r laptime ${i === 0 ? "t-fastest" : ""}">${escapeHtml(lapTime(l.lapTimeSeconds))}${i === 0 ? "" : `<div class="hint" style="margin:2px 0 0">+${((l.lapTimeSeconds ?? 0) - (c.laps[0].lapTimeSeconds ?? 0)).toFixed(3)}</div>`}</td>
-          <td class="col-r" style="white-space:nowrap"><a class="btn btn--ghost btn--sm" href="/library/lap/${l.id}">View</a> <a class="btn btn--ghost btn--sm" href="/library/lap/${l.id}/download">Download</a></td>
+          <td class="col-r" style="white-space:nowrap"><a class="btn btn--ghost btn--sm" href="/library/lap/${l.id}">View</a> <a class="btn btn--ghost btn--sm" href="/library/lap/${l.id}/download">Download</a>${isCoach ? ` ${removeForm(l.id, l.autoPromoted && l.sourceSessionId !== null)}` : ""}</td>
         </tr>`,
   )
   .join("")}
@@ -190,6 +202,7 @@ ${c.laps
 
   const body = `
 <a class="backlink" href="/library">&larr; All tracks</a>
+${noticeHtml}
 <div class="phead">
   <div>
     <span class="eyebrow">Track</span>
@@ -215,6 +228,18 @@ ${c.laps
 </div>
 ${LIBRARY_CSS}`;
   return layout(track, body, navUser);
+}
+
+/**
+ * Coach-only "Remove" button. A lap that was published automatically has to
+ * be disqualified too, otherwise the next refresh would just publish it
+ * again -- the confirm says so, so nobody is surprised.
+ */
+export function removeForm(id: number, fromSession: boolean): string {
+  const message = fromSession
+    ? "Remove this reference lap?\\n\\nIt came from a driver session, so that lap will also be disqualified (taken off the leaderboard) to stop it being published again. You can restore it from the session page."
+    : "Remove this reference lap for everyone?";
+  return `<form action="/library/lap/${id}/remove" method="post" style="display:inline" onsubmit="return confirm('${message}')"><button class="btn btn--ghost btn--sm" type="submit" style="color:var(--warn)">Remove</button></form>`;
 }
 
 const LIBRARY_CSS = `

@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { db } from "../db/client";
-import { users, sessions, referenceLaps } from "../db/schema";
+import { users, sessions, referenceLaps, raceResults } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { getAvailableReferenceLaps, getReferenceLapForDownload } from "../db/queries";
+import { getAvailableReferenceLapsWithSetupFlag, getReferenceLapForDownload, getSetupForReferenceLap, saveSetup } from "../db/queries";
+import { sanitiseSetup } from "../setups";
 import { syncTrackLeaderboard } from "../discord/leaderboard";
 import { evaluateSessionForPromotion } from "../db/promotions";
 
@@ -58,6 +59,16 @@ apiRoutes.post("/sessions", async (c) => {
     })
     .returning({ id: sessions.id });
 
+  // The car setup the driver chose to share with this lap, if any (the app
+  // only sends one when "share my setups" is switched on). A bad or
+  // oversized one is dropped; the lap itself is stored regardless.
+  const setup = sanitiseSetup(body.setup);
+  if (setup) {
+    await saveSetup({ ownerId: userId, sessionId: created.id, track: body.track, car: body.car, setup }).catch((err) =>
+      console.error(`Saving the setup for session ${created.id} failed:`, err),
+    );
+  }
+
   // Two follow-ups, neither awaited: the app gets its 201 straight away,
   // and a failure in either is logged rather than turned into a failed
   // upload. If this lap is the fastest for its track and car class it
@@ -83,6 +94,50 @@ apiRoutes.post("/sessions", async (c) => {
   return c.json({ id: created.id }, 201);
 });
 
+// Where a race finished, sent by the desktop app when the driver takes
+// the flag and again when the session ends (same raceKey, fuller
+// classification). Only ever used to cross-check league results.
+apiRoutes.post("/race-results", async (c) => {
+  const userId = c.get("apiUserId");
+  const body = await c.req.json().catch(() => null);
+  const int = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : null);
+  const place = int(body?.place);
+  if (
+    !body ||
+    typeof body.raceKey !== "string" ||
+    !body.raceKey ||
+    body.raceKey.length > 64 ||
+    typeof body.track !== "string" ||
+    typeof body.car !== "string" ||
+    place === null ||
+    place < 1 ||
+    place > 200
+  ) {
+    return c.json({ error: "Expected JSON body with at least: raceKey, track, car, place" }, 400);
+  }
+  // The classification is just a table of the field; keep it modest in size.
+  const classification = Array.isArray(body.classification) ? body.classification.slice(0, 200) : null;
+  const values = {
+    userId,
+    raceKey: body.raceKey,
+    track: body.track,
+    car: body.car,
+    place,
+    classPlace: int(body.classPlace),
+    finishStatus: int(body.finishStatus) ?? 0,
+    laps: int(body.laps),
+    bestLapSeconds: typeof body.bestLap === "number" && Number.isFinite(body.bestLap) ? body.bestLap : null,
+    fieldSize: int(body.fieldSize),
+    classification,
+    updatedAt: new Date(),
+  };
+  await db
+    .insert(raceResults)
+    .values(values)
+    .onConflictDoUpdate({ target: [raceResults.userId, raceResults.raceKey], set: values });
+  return c.json({ ok: true }, 201);
+});
+
 // Upload a reference lap (the full per-bin JSON the local app already
 // produces via ReferenceLap.save()).
 apiRoutes.post("/reference-laps", async (c) => {
@@ -103,6 +158,13 @@ apiRoutes.post("/reference-laps", async (c) => {
       isPublic: body.isPublic === true,
     })
     .returning({ id: referenceLaps.id });
+
+  const setup = sanitiseSetup(body.setup);
+  if (setup) {
+    await saveSetup({ ownerId: userId, referenceLapId: created.id, track: body.track, car: body.car, setup }).catch((err) =>
+      console.error(`Saving the setup for reference lap ${created.id} failed:`, err),
+    );
+  }
   return c.json({ id: created.id }, 201);
 });
 
@@ -113,7 +175,7 @@ apiRoutes.post("/reference-laps", async (c) => {
 // changes track, then calls GET /reference-laps/:id for the one they pick.
 apiRoutes.get("/reference-laps", async (c) => {
   const userId = c.get("apiUserId");
-  const laps = await getAvailableReferenceLaps(userId);
+  const laps = await getAvailableReferenceLapsWithSetupFlag(userId);
   return c.json(laps);
 });
 
@@ -133,4 +195,30 @@ apiRoutes.get("/reference-laps/:id", async (c) => {
     return c.json({ error: "Reference lap not found." }, 404);
   }
   return c.json(lap);
+});
+
+// The car setup that goes with a reference lap: the exact .svm file (when
+// the driver's app could read it) and the garage's setting values ("live"),
+// which the app can install and apply. Same access rule as the lap itself:
+// 404 for "doesn't exist", "isn't yours/public" and "has no setup" alike.
+apiRoutes.get("/reference-laps/:id/setup", async (c) => {
+  const userId = c.get("apiUserId");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) {
+    return c.json({ error: "Invalid reference lap id." }, 400);
+  }
+  const lap = await getReferenceLapForDownload(id, userId);
+  if (!lap) return c.json({ error: "Setup not found." }, 404);
+  const setup = await getSetupForReferenceLap({ id: lap.id, sourceSessionId: lap.sourceSessionId });
+  if (!setup) return c.json({ error: "Setup not found." }, 404);
+  return c.json({
+    name: setup.name,
+    track: setup.track,
+    car: setup.car,
+    carModel: setup.carModel,
+    trackFolder: setup.trackFolder,
+    svm: setup.svm,
+    live: setup.live,
+    createdAt: setup.createdAt,
+  });
 });

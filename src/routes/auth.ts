@@ -147,7 +147,7 @@ authRoutes.get("/discord/callback", async (c) => {
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
-  const role = coachIds.includes(profile.id) ? "coach" : "student";
+  const isCoachId = coachIds.includes(profile.id);
 
   // Create or update the account. `name`/`email` from our own signup form
   // take priority if provided; Discord's profile fills in gaps.
@@ -163,7 +163,11 @@ authRoutes.get("/discord/callback", async (c) => {
         lastLoginAt: new Date(),
         discordUsername: profile.username,
         discordAvatarUrl: avatarUrl,
-        role,
+        // Coaches come from DISCORD_COACH_IDS and are re-checked at every
+        // login. A moderator is promoted from the League staff page and
+        // must survive a login; only someone who is no longer a coach
+        // drops back to student.
+        role: isCoachId ? "coach" : existing.role === "moderator" ? "moderator" : "student",
       })
       .where(eq(users.id, existing.id));
     userId = existing.id;
@@ -176,7 +180,7 @@ authRoutes.get("/discord/callback", async (c) => {
         discordId: profile.id,
         discordUsername: profile.username,
         discordAvatarUrl: avatarUrl,
-        role,
+        role: isCoachId ? "coach" : "student",
       })
       .returning({ id: users.id });
     userId = created.id;
