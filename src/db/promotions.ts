@@ -232,8 +232,7 @@ export function hasUsableTelemetry(data: unknown): boolean {
 
 export type PromotionDecision =
   | { action: "skip"; reason: string }
-  | { action: "promote"; reason: string }
-  | { action: "pending_approval"; reason: string };
+  | { action: "promote"; reason: string };
 
 /**
  * Pure decision, no database access -- given what the current public

@@ -9,6 +9,12 @@ export const users = pgTable("users", {
   discordUsername: text("discord_username").notNull(),
   discordAvatarUrl: text("discord_avatar_url"),
   apiToken: text("api_token").unique(),
+  // Set when a member connects their Google account (see src/googleCalendar.ts
+  // and the /league/calendar routes). The refresh token lets the site write
+  // league races straight into their calendar without them being present;
+  // the email is stored only so the account page can show what's connected.
+  googleEmail: text("google_email"),
+  googleRefreshToken: text("google_refresh_token"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
 });
@@ -25,10 +31,9 @@ export const referenceLaps = pgTable("reference_laps", {
   isPublic: boolean("is_public").notNull().default(false),
   // Was this row created automatically because a student's session beat
   // the previous public reference for its track/class, as opposed to a
-  // coach typing one in through the "Global reference laps" page? This
-  // is what decides whether the NEXT faster student lap can freely
-  // replace it (true) or has to be flagged for the coach to approve
-  // first (false) -- see db/promotions.ts.
+  // coach typing one in through the "Global reference laps" page? Used
+  // for display and traceability on the coach's reference-laps page --
+  // promotion itself no longer distinguishes the two (see db/promotions.ts).
   autoPromoted: boolean("auto_promoted").notNull().default(false),
   // Which session earned this promotion, if it was one -- null for a
   // coach-typed lap. Kept for traceability/display ("set by Connor from
@@ -58,30 +63,6 @@ export const sessions = pgTable("sessions", {
   excludedReason: text("excluded_reason"),
   excludedAt: timestamp("excluded_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-// A student session that beat the current PUBLIC reference for its
-// track/class, where that reference was coach-set (autoPromoted: false
-// on referenceLaps) -- so it's held here for the coach to approve or
-// reject rather than silently replacing something they curated by hand.
-// One row per pending decision; resolved rows are kept (not deleted) as
-// a record of what was decided, not just what's currently outstanding.
-export const promotionApprovals = pgTable("promotion_approvals", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => sessions.id),
-  track: text("track").notNull(),
-  carClass: text("car_class"), // may be null -- see carClass() in queries.ts
-  lapTimeSeconds: real("lap_time_seconds").notNull(),
-  // The reference this session would replace, and its time -- captured
-  // at the moment the approval was raised, so what's shown to the coach
-  // can't drift if something else changes before they act on it.
-  currentReferenceLapId: integer("current_reference_lap_id")
-    .notNull()
-    .references(() => referenceLaps.id),
-  currentReferenceLapTimeSeconds: real("current_reference_lap_time_seconds").notNull(),
-  status: text("status").notNull().default("pending"), // "pending" | "approved" | "rejected"
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  resolvedAt: timestamp("resolved_at"),
 });
 
 // One row per track that has a leaderboard message in the Discord
@@ -167,8 +148,11 @@ export const leagueEntries = pgTable(
     id: serial("id").primaryKey(),
     leagueId: integer("league_id").notNull().references(() => leagues.id),
     userId: integer("user_id").notNull().references(() => users.id),
-    carNumber: text("car_number"),
     team: text("team"),
+    // The driver's LMU ratings as they gave them at registration: Safety
+    // Rating and Driver Rating. Optional -- left null if not supplied.
+    srRating: real("sr_rating"),
+    drRating: real("dr_rating"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({ perDriver: uniqueIndex("league_entries_league_user_idx").on(t.leagueId, t.userId) }),
@@ -201,6 +185,23 @@ export const leagueResults = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({ perDriver: uniqueIndex("league_results_event_user_idx").on(t.eventId, t.userId) }),
+);
+
+// The Google Calendar event the site created in each connected driver's
+// calendar for each league race, so a later edit can update that same event
+// and a deletion can remove it, rather than leaving duplicates behind.
+// Only drivers who connected Google AND are registered for the league get a
+// row. See src/googleCalendar.ts and the sync helpers in db/league.ts.
+export const leagueCalendarEvents = pgTable(
+  "league_calendar_events",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id),
+    eventId: integer("event_id").notNull().references(() => leagueEvents.id),
+    googleEventId: text("google_event_id").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({ perDriverEvent: uniqueIndex("league_calendar_events_user_event_idx").on(t.userId, t.eventId) }),
 );
 // Reaction roles: reacting to `messageId` with `emoji` gives a member `roleId`
 // (removing the reaction takes it away). `emoji` is the unicode character, or

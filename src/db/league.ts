@@ -1,6 +1,8 @@
 import { db } from "./client";
-import { users, leagues, leagueEntries, leagueEvents, leagueResults, raceResults } from "./schema";
-import { eq, and, asc, desc, inArray, gte, lte, sql } from "drizzle-orm";
+import { users, leagues, leagueEntries, leagueEvents, leagueResults, raceResults, leagueCalendarEvents } from "./schema";
+import { eq, and, asc, desc, inArray, gte, lte, isNotNull, sql } from "drizzle-orm";
+import { calendarEnabled, upsertCalendarEvent, deleteCalendarEvent } from "../googleCalendar";
+import { siteUrl } from "../siteUrl";
 
 /**
  * League data: registration, the schedule, results entered by the
@@ -69,8 +71,9 @@ export async function getEntries(leagueId: number) {
     .select({
       id: leagueEntries.id,
       userId: leagueEntries.userId,
-      carNumber: leagueEntries.carNumber,
       team: leagueEntries.team,
+      srRating: leagueEntries.srRating,
+      drRating: leagueEntries.drRating,
       name: users.name,
       discordUsername: users.discordUsername,
       discordAvatarUrl: users.discordAvatarUrl,
@@ -113,8 +116,9 @@ export type EventResult = Awaited<ReturnType<typeof getEventResults>>[number];
 export type StandingRow = {
   userId: number;
   name: string;
-  carNumber: string | null;
   team: string | null;
+  srRating: number | null;
+  drRating: number | null;
   points: number;
   wins: number;
   podiums: number;
@@ -136,8 +140,9 @@ export async function getStandings(leagueId: number, events: LeagueEvent[]): Pro
     rows.set(e.userId, {
       userId: e.userId,
       name: e.name,
-      carNumber: e.carNumber,
       team: e.team,
+      srRating: e.srRating,
+      drRating: e.drRating,
       points: 0,
       wins: 0,
       podiums: 0,
@@ -330,4 +335,119 @@ export function checkAgainstApp(
   if (entered.status === "dns") return { verdict: "differs", note: `App recorded a race: ${seen}` };
   if (entered.status === appStatus) return { verdict: "match", note: `App saw ${appStatus.toUpperCase()}` };
   return { verdict: "differs", note: `App saw ${appStatus === "finished" ? seen : appStatus.toUpperCase()}` };
+}
+
+// ------------------------------------------------------------- calendar sync
+//
+// Push a league race into every registered driver who has connected Google
+// Calendar. All of it is best-effort and fail-quiet: a revoked grant or a
+// Google hiccup must never surface to the organiser saving the race.
+
+/** How long a race blocks the calendar for when the app doesn't say otherwise. */
+const RACE_SLOT_HOURS = 2;
+
+function eventSummary(league: League, event: LeagueEvent): string {
+  return `${league.name} — R${event.round} ${event.name}`;
+}
+
+function eventDescription(league: League, event: LeagueEvent): string {
+  const when = event.eventDate ? `${event.eventDate.toISOString().slice(0, 16).replace("T", " ")} UTC` : "TBA";
+  return [
+    `${league.name}, round ${event.round}.`,
+    `Track: ${event.track}`,
+    `Starts: ${when}`,
+    "",
+    `${siteUrl()}/league/event/${event.id}`,
+  ].join("\n");
+}
+
+/** Create/update one user's calendar event for one race, remembering its id. */
+async function syncEventForUser(
+  league: League,
+  event: LeagueEvent,
+  userId: number,
+  refreshToken: string,
+): Promise<void> {
+  if (!event.eventDate) return;
+  const existing = await db.query.leagueCalendarEvents.findFirst({
+    where: and(eq(leagueCalendarEvents.userId, userId), eq(leagueCalendarEvents.eventId, event.id)),
+  });
+  const start = event.eventDate;
+  const end = new Date(start.getTime() + RACE_SLOT_HOURS * 3600 * 1000);
+  const gid = await upsertCalendarEvent(refreshToken, {
+    summary: eventSummary(league, event),
+    description: eventDescription(league, event),
+    startUtc: start,
+    endUtc: end,
+    googleEventId: existing?.googleEventId ?? null,
+  });
+  if (!gid) return;
+  if (existing) {
+    if (existing.googleEventId !== gid) {
+      await db.update(leagueCalendarEvents).set({ googleEventId: gid }).where(eq(leagueCalendarEvents.id, existing.id));
+    }
+  } else {
+    await db
+      .insert(leagueCalendarEvents)
+      .values({ userId, eventId: event.id, googleEventId: gid })
+      .onConflictDoNothing();
+  }
+}
+
+/** The registered drivers of a league who have connected Google. */
+async function connectedDrivers(leagueId: number) {
+  return db
+    .select({ userId: users.id, refreshToken: users.googleRefreshToken })
+    .from(users)
+    .innerJoin(leagueEntries, and(eq(leagueEntries.userId, users.id), eq(leagueEntries.leagueId, leagueId)))
+    .where(isNotNull(users.googleRefreshToken));
+}
+
+/**
+ * Bring every connected driver's calendar in line with a race that was just
+ * created or edited. No date (or the date was cleared) means there's nothing
+ * to show, so any event we'd added is removed instead.
+ */
+export async function syncLeagueEventToCalendars(league: League, event: LeagueEvent): Promise<void> {
+  if (!calendarEnabled()) return;
+  if (!event.eventDate) {
+    await removeLeagueEventFromCalendars(event.id);
+    return;
+  }
+  const drivers = await connectedDrivers(league.id);
+  for (const d of drivers) {
+    if (d.refreshToken) await syncEventForUser(league, event, d.userId, d.refreshToken).catch((e) => console.error("calendar sync:", e));
+  }
+}
+
+/** Delete a race's calendar event from every driver who had one, then forget it. */
+export async function removeLeagueEventFromCalendars(eventId: number): Promise<void> {
+  if (!calendarEnabled()) return;
+  const rows = await db.select().from(leagueCalendarEvents).where(eq(leagueCalendarEvents.eventId, eventId));
+  for (const r of rows) {
+    const u = await db.query.users.findFirst({ where: eq(users.id, r.userId) });
+    if (u?.googleRefreshToken) await deleteCalendarEvent(u.googleRefreshToken, r.googleEventId).catch(() => {});
+    await db.delete(leagueCalendarEvents).where(eq(leagueCalendarEvents.id, r.id));
+  }
+}
+
+/**
+ * A driver just connected Google: add every upcoming race of every league
+ * they're registered for, so their calendar is caught up without them
+ * waiting for the next edit.
+ */
+export async function backfillUserCalendars(userId: number): Promise<void> {
+  if (!calendarEnabled()) return;
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user?.googleRefreshToken) return;
+  const now = new Date();
+  const rows = await db
+    .select({ league: leagues, event: leagueEvents })
+    .from(leagueEvents)
+    .innerJoin(leagues, eq(leagues.id, leagueEvents.leagueId))
+    .innerJoin(leagueEntries, and(eq(leagueEntries.leagueId, leagues.id), eq(leagueEntries.userId, userId)))
+    .where(and(gte(leagueEvents.eventDate, now), isNotNull(leagueEvents.eventDate)));
+  for (const { league, event } of rows) {
+    await syncEventForUser(league, event, userId, user.googleRefreshToken).catch((e) => console.error("calendar backfill:", e));
+  }
 }

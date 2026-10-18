@@ -129,3 +129,34 @@ Every signed-in user can change their display name on the **Account** page
 `. ' _ -` — so it fits a leaderboard row and can be drawn with the bundled fonts.
 It updates everywhere the site shows the name and redraws the Discord board; it
 doesn't touch the Discord account or login. Rules live in `src/db/names.ts`.
+
+## Leagues & race calendars
+
+The **League** pages (`/league`) let a community run a championship: a coach
+creates a league and its round events, drivers register, and finishing positions
+are scored into a standings table (points table, fastest-lap/pole bonuses and
+participation points are all coach-set). Registering a driver collects their
+**team name** and optional **SR (safety rating)** and **DR (driver rating)**;
+their display name and linked Discord handle come from their account, so there's
+nothing to type for those.
+
+Connecting **Google Calendar** is optional and off until Google credentials are
+configured (see `.env.example`: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+and optionally `GOOGLE_REDIRECT_URI`). A driver clicks **Connect Google
+Calendar** on a league page, approves in Google's OAuth screen, and from then on
+**every future race in a league they've registered for is added to their Google
+Calendar automatically** — as the organiser creates or edits an event, and for
+already-scheduled events at the moment of connecting. Unscheduling an event
+(deleting it or clearing its date) removes it from their calendars too. To set
+this up in Google Cloud Console: create a project, enable the **Google Calendar
+API**, configure the OAuth consent screen (External, add the calendar scope), and
+create a **Web application** OAuth client whose authorized redirect URI is
+exactly `<site>/league/calendar/callback` (add the localhost version too for dev).
+
+The feature lives in `src/googleCalendar.ts` (OAuth + the Calendar API calls)
+and the sync logic in `src/db/league.ts`; connection details are on the `users`
+row (`google_email`, `google_refresh_token`) and each placed event is tracked in
+`league_calendar_events` (`db/league.ts`, migration `0008`, also applied
+idempotently at startup by `db/ensure-schema.ts`). Every Google call is
+fail-quiet — it logs and carries on, so a calendar hiccup never breaks the site.
+

@@ -24,6 +24,7 @@ import { siteUrl } from "../siteUrl";
 export type NavUser = {
   name: string;
   role: string;
+  discordUsername?: string;
   discordAvatarUrl: string | null;
 } | null;
 

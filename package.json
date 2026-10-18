@@ -8,7 +8,8 @@
     "start": "bun run src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test": "bun test test/contract.test.ts"
   },
   "dependencies": {
     "@resvg/resvg-wasm": "2.6.2",

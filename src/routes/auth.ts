@@ -20,10 +20,18 @@ function requiredEnv(name: string): string {
 }
 
 // Signs the session cookie so it can't be forged by editing the user id.
-// SESSION_SECRET is preferred; the OAuth client secret is a fallback so an
-// existing deploy keeps working until one is set.
+// In production SESSION_SECRET is mandatory -- the OAuth client secret is
+// a poor signing key (it's shared with Discord's servers and rotates with
+// it). In development the fallback stays, so a fresh clone runs with only
+// the Discord values filled in.
 function sessionSecret(): string {
-  return process.env.SESSION_SECRET || requiredEnv("DISCORD_CLIENT_SECRET");
+  const secret = process.env.SESSION_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production")
+    throw new Error(
+      "SESSION_SECRET must be set in production (Railway -> Variables -> add a long random string).",
+    );
+  return requiredEnv("DISCORD_CLIENT_SECRET");
 }
 
 export const authRoutes = new Hono();

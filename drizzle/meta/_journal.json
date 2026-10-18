@@ -50,6 +50,20 @@
       "when": 1792200000000,
       "tag": "0006_leagues",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792329021209,
+      "tag": "0007_drop_promotion_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792329021210,
+      "tag": "0008_league_ratings_calendar",
+      "breakpoints": true
     }
   ]
 }
