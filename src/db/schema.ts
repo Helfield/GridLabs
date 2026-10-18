@@ -25,10 +25,9 @@ export const referenceLaps = pgTable("reference_laps", {
   isPublic: boolean("is_public").notNull().default(false),
   // Was this row created automatically because a student's session beat
   // the previous public reference for its track/class, as opposed to a
-  // coach typing one in through the "Global reference laps" page? This
-  // is what decides whether the NEXT faster student lap can freely
-  // replace it (true) or has to be flagged for the coach to approve
-  // first (false) -- see db/promotions.ts.
+  // coach typing one in through the "Global reference laps" page? Used
+  // for display and traceability on the coach's reference-laps page --
+  // promotion itself no longer distinguishes the two (see db/promotions.ts).
   autoPromoted: boolean("auto_promoted").notNull().default(false),
   // Which session earned this promotion, if it was one -- null for a
   // coach-typed lap. Kept for traceability/display ("set by Connor from
@@ -58,30 +57,6 @@ export const sessions = pgTable("sessions", {
   excludedReason: text("excluded_reason"),
   excludedAt: timestamp("excluded_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-// A student session that beat the current PUBLIC reference for its
-// track/class, where that reference was coach-set (autoPromoted: false
-// on referenceLaps) -- so it's held here for the coach to approve or
-// reject rather than silently replacing something they curated by hand.
-// One row per pending decision; resolved rows are kept (not deleted) as
-// a record of what was decided, not just what's currently outstanding.
-export const promotionApprovals = pgTable("promotion_approvals", {
-  id: serial("id").primaryKey(),
-  sessionId: integer("session_id").notNull().references(() => sessions.id),
-  track: text("track").notNull(),
-  carClass: text("car_class"), // may be null -- see carClass() in queries.ts
-  lapTimeSeconds: real("lap_time_seconds").notNull(),
-  // The reference this session would replace, and its time -- captured
-  // at the moment the approval was raised, so what's shown to the coach
-  // can't drift if something else changes before they act on it.
-  currentReferenceLapId: integer("current_reference_lap_id")
-    .notNull()
-    .references(() => referenceLaps.id),
-  currentReferenceLapTimeSeconds: real("current_reference_lap_time_seconds").notNull(),
-  status: text("status").notNull().default("pending"), // "pending" | "approved" | "rejected"
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  resolvedAt: timestamp("resolved_at"),
 });
 
 // One row per track that has a leaderboard message in the Discord

@@ -40,6 +40,25 @@ if "%CHANGED%"=="0" if "%STAGED%"=="0" if "%UNTRACKED%"=="0" (
   exit /b 0
 )
 
+REM Safety check before anything is staged: .env holds real credentials
+REM and `git add -A` below would happily commit it if .gitignore ever
+REM stopped covering it. Refuse to deploy in that case.
+git ls-files --error-unmatch .env >nul 2>&1
+if not errorlevel 1 (
+  echo ERROR: .env is tracked by git. It must never be committed.
+  echo Remove it from the repo with:  git rm --cached .env
+  echo then commit that before deploying again.
+  pause
+  exit /b 1
+)
+git check-ignore -q .env 2>nul
+if errorlevel 1 (
+  echo ERROR: .env is not ignored by git - .gitignore is broken.
+  echo Add ".env" to .gitignore before deploying.
+  pause
+  exit /b 1
+)
+
 REM A message is optional. Leaving it blank stamps the date and time,
 REM which is still more useful in the history than nothing at all.
 set "MSG="
