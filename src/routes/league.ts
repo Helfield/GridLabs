@@ -20,9 +20,13 @@ import {
   recalculateLeague,
   getAppRecordsForEvent,
   parsePointsTable,
+  syncLeagueEventToCalendars,
+  removeLeagueEventFromCalendars,
+  backfillUserCalendars,
   RESULT_STATUSES,
   type ResultStatus,
 } from "../db/league";
+import { calendarEnabled, authorizeUrl, exchangeCode } from "../googleCalendar";
 import { leagueIndexPage, leaguePage, eventPage, staffPage } from "../views/league-pages";
 
 export const leagueRoutes = new Hono<{ Variables: AppVariables }>();
@@ -57,6 +61,13 @@ function intField(v: unknown, fallback: number, min: number, max: number): numbe
 
 function textField(v: unknown, maxLen: number): string {
   return typeof v === "string" ? v.trim().slice(0, maxLen) : "";
+}
+
+/** An optional SR/DR rating: a non-negative number rounded to 4 dp, or null if blank/invalid. */
+function ratingField(v: unknown): number | null {
+  if (typeof v !== "string" || !v.trim()) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 10000) / 10000 : null;
 }
 
 /** A datetime-local value ("2026-10-17T19:30"), read as UTC. Null if blank or invalid. */
@@ -187,6 +198,9 @@ leagueRoutes.post("/event/:eventId/edit", async (c) => {
     .update(leagueEvents)
     .set({ name, track, round: intField(body.round, event.round, 1, 99), eventDate: parseEventDate(body.eventDate) })
     .where(eq(leagueEvents.id, id));
+  const updated = await getEvent(id);
+  const league = await getLeague(event.leagueId);
+  if (updated && league) void syncLeagueEventToCalendars(league, updated).catch((e) => console.error("calendar sync:", e));
   return c.redirect(back(`/league/event/${id}`, "msg", "Event updated."));
 });
 
@@ -196,9 +210,60 @@ leagueRoutes.post("/event/:eventId/delete", async (c) => {
   const id = Number(c.req.param("eventId"));
   const event = await getEvent(id);
   if (!event) return c.redirect("/league");
+  // Take it off every connected driver's calendar first -- that also clears
+  // the league_calendar_events rows, which reference this event.
+  await removeLeagueEventFromCalendars(id).catch((e) => console.error("calendar remove:", e));
   await db.delete(leagueResults).where(eq(leagueResults.eventId, id));
   await db.delete(leagueEvents).where(eq(leagueEvents.id, id));
   return c.redirect(back(`/league/${event.leagueId}`, "msg", "Event deleted."));
+});
+
+// ----------------------------------------------------------- calendar connect
+// Registered before "/:id" so "calendar" isn't read as a league id.
+
+leagueRoutes.get("/calendar/connect", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect("/login");
+  if (!calendarEnabled()) return c.redirect(back("/league", "error", "Google Calendar isn't set up on this site yet."));
+  // state carries the user id so the callback can confirm the round-trip
+  // belongs to whoever is signed in (the session cookie is still present).
+  const state = Buffer.from(JSON.stringify({ u: user.id, n: crypto.randomUUID() })).toString("base64url");
+  return c.redirect(authorizeUrl(state));
+});
+
+leagueRoutes.get("/calendar/callback", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect("/login");
+  if (c.req.query("error")) return c.redirect(back("/league", "error", "Google Calendar connection was cancelled."));
+  const code = c.req.query("code");
+  const state = c.req.query("state");
+  let stateUser: number | undefined;
+  try {
+    stateUser = JSON.parse(Buffer.from(state ?? "", "base64url").toString()).u;
+  } catch {
+    stateUser = undefined;
+  }
+  if (!code || stateUser !== user.id)
+    return c.redirect(back("/league", "error", "That calendar request was incomplete. Please try again."));
+  const grant = await exchangeCode(code);
+  if (!grant) return c.redirect(back("/league", "error", "Couldn't complete the Google Calendar connection."));
+  await db
+    .update(users)
+    .set({ googleEmail: grant.email, googleRefreshToken: grant.refreshToken })
+    .where(eq(users.id, user.id));
+  // Catch the calendar up with races already scheduled for leagues they're in.
+  await backfillUserCalendars(user.id).catch((e) => console.error("calendar backfill:", e));
+  return c.redirect(back("/league", "msg", "Google Calendar connected — upcoming races are on your calendar."));
+});
+
+leagueRoutes.post("/calendar/disconnect", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect("/login");
+  await db
+    .update(users)
+    .set({ googleEmail: null, googleRefreshToken: null })
+    .where(eq(users.id, user.id));
+  return c.redirect(back("/league", "msg", "Google Calendar disconnected. Races already added stay in your calendar."));
 });
 
 // ----------------------------------------------------------------- league
@@ -215,7 +280,18 @@ leagueRoutes.get("/:id", async (c) => {
   ]);
   const standings = await getStandings(league.id, events);
   return c.html(
-    leaguePage(user, { league, entries, events, standings, registered, msg: c.req.query("msg"), error: c.req.query("error") }),
+    leaguePage(user, {
+      league,
+      entries,
+      events,
+      standings,
+      registered,
+      calendarOn: calendarEnabled(),
+      calendarConnected: Boolean(user.googleRefreshToken),
+      calendarEmail: user.googleEmail,
+      msg: c.req.query("msg"),
+      error: c.req.query("error"),
+    }),
   );
 });
 
@@ -229,7 +305,13 @@ leagueRoutes.post("/:id/register", async (c) => {
   const body = await c.req.parseBody();
   await db
     .insert(leagueEntries)
-    .values({ leagueId: id, userId: user.id, carNumber: textField(body.carNumber, 6) || null, team: textField(body.team, 60) || null })
+    .values({
+      leagueId: id,
+      userId: user.id,
+      team: textField(body.team, 60) || null,
+      srRating: ratingField(body.srRating),
+      drRating: ratingField(body.drRating),
+    })
     .onConflictDoNothing();
   return c.redirect(back(`/league/${id}`, "msg", "You're registered."));
 });
@@ -263,6 +345,8 @@ leagueRoutes.post("/:id/events", async (c) => {
       eventDate: parseEventDate(body.eventDate),
     })
     .returning({ id: leagueEvents.id });
+  const full = await getEvent(created.id);
+  if (full) void syncLeagueEventToCalendars(league, full).catch((e) => console.error("calendar sync:", e));
   return c.redirect(`/league/event/${created.id}`);
 });
 

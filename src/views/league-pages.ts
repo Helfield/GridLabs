@@ -19,6 +19,11 @@ function dateInputValue(d: Date | null | undefined): string {
   return d ? d.toISOString().slice(0, 16) : "";
 }
 
+/** SR/DR as typed: whole numbers stay plain, otherwise trim trailing zeros (4.2500 -> 4.25). */
+function fmtRating(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(4)));
+}
+
 function dateTimeUtc(d: Date | null | undefined): string {
   if (!d) return "Date to be announced";
   return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
@@ -102,12 +107,40 @@ export function leaguePage(
     events: LeagueEvent[];
     standings: StandingRow[];
     registered: boolean;
+    calendarOn: boolean;
+    calendarConnected: boolean;
+    calendarEmail: string | null;
     msg?: string | null;
     error?: string | null;
   },
 ): string {
   const { league, entries, events, standings, registered } = ctx;
   const staff = isStaff(user);
+
+  // Google Calendar connect/disconnect, shown once the site has Google
+  // credentials configured. Connecting lets every race you're registered for
+  // drop straight into your calendar as the organisers create them.
+  const calendarPanel = !ctx.calendarOn
+    ? ""
+    : ctx.calendarConnected
+      ? `
+<section class="panel" style="margin-bottom:18px">
+  <div class="panel__head"><h2>Your calendar</h2><span class="tag">Connected</span></div>
+  <div class="panel__body">
+    <p style="margin:0 0 12px;color:var(--muted)">Races in leagues you join are added to <strong style="color:var(--text)">${escapeHtml(ctx.calendarEmail ?? "your Google Calendar")}</strong> automatically.</p>
+    <form action="/league/calendar/disconnect" method="post">
+      <button class="btn btn--ghost btn--sm" type="submit">Disconnect Google Calendar</button>
+    </form>
+  </div>
+</section>`
+      : `
+<section class="panel" style="margin-bottom:18px">
+  <div class="panel__head"><h2>Your calendar</h2><span class="tag">Not connected</span></div>
+  <div class="panel__body">
+    <p style="margin:0 0 12px;color:var(--muted)">Connect Google Calendar once and every future race you're registered for is added to it automatically.</p>
+    <a class="btn btn--discord btn--sm" style="background:var(--fastest)" href="/league/calendar/connect">Connect Google Calendar</a>
+  </div>
+</section>`;
 
   const joinPanel = registered
     ? `
@@ -124,11 +157,14 @@ export function leaguePage(
 <section class="panel" style="margin-bottom:18px">
   <div class="panel__head"><h2>Register</h2><span class="tag">Open</span></div>
   <div class="panel__body">
+    <p style="margin:0 0 14px;color:var(--muted)">Registering as <strong style="color:var(--text)">${escapeHtml(user.name)}</strong>${user.discordUsername ? ` <span style="color:var(--dim)">@${escapeHtml(user.discordUsername)}</span>` : ""} — change it on your <a href="/account">account page</a>.</p>
     <form action="/league/${league.id}/register" method="post">
-      <label class="field"><span class="field__label">Car number (optional)</span>
-        <input type="text" name="carNumber" maxlength="6" autocomplete="off"></label>
-      <label class="field"><span class="field__label">Team (optional)</span>
+      <label class="field"><span class="field__label">Team name (optional)</span>
         <input type="text" name="team" maxlength="60" autocomplete="off"></label>
+      <label class="field"><span class="field__label">SR — Safety Rating (optional)</span>
+        <input type="number" name="srRating" min="0" max="10" step="0.0001" inputmode="decimal" placeholder="e.g. 4.2500"></label>
+      <label class="field"><span class="field__label">DR — Driver Rating (optional)</span>
+        <input type="number" name="drRating" min="0" max="100000" step="1" inputmode="numeric" placeholder="e.g. 62"></label>
       <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Register for ${escapeHtml(league.name)}</button>
     </form>
   </div>
@@ -149,7 +185,7 @@ export function leaguePage(
     <tr>
       <td class="num pos">${i + 1}</td>
       <td><div class="driver__name">${escapeHtml(s.name)}</div>
-          <div class="driver__handle">${[s.carNumber ? `#${escapeHtml(s.carNumber)}` : "", s.team ? escapeHtml(s.team) : ""].filter(Boolean).join(" · ")}</div></td>
+          <div class="driver__handle">${[s.team ? escapeHtml(s.team) : "", s.srRating != null ? `SR ${fmtRating(s.srRating)}` : "", s.drRating != null ? `DR ${fmtRating(s.drRating)}` : ""].filter(Boolean).join(" · ")}</div></td>
       ${events.map((e) => `<td class="num col-r hide-sm" style="color:var(--dim)">${s.byEvent.has(e.id) ? s.byEvent.get(e.id) : "–"}</td>`).join("")}
       <td class="num col-r">${s.wins}</td>
       <td class="num col-r"><strong>${s.points}</strong></td>
@@ -207,7 +243,7 @@ export function leaguePage(
         ? entries
             .map(
               (e) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line-soft)">
-        <span>${escapeHtml(e.name)} <span style="color:var(--dim)">@${escapeHtml(e.discordUsername)}${e.carNumber ? ` · #${escapeHtml(e.carNumber)}` : ""}${e.team ? ` · ${escapeHtml(e.team)}` : ""}</span></span>
+        <span>${escapeHtml(e.name)} <span style="color:var(--dim)">@${escapeHtml(e.discordUsername)}${e.team ? ` · ${escapeHtml(e.team)}` : ""}${e.srRating != null ? ` · SR ${fmtRating(e.srRating)}` : ""}${e.drRating != null ? ` · DR ${fmtRating(e.drRating)}` : ""}</span></span>
         <form action="/league/${league.id}/remove/${e.userId}" method="post" onsubmit="return confirm('Remove ${escapeHtml(e.name).replace(/'/g, "")} from the league?')">
           <button class="linkbtn" type="submit" style="color:var(--warn)">Remove</button></form>
       </div>`,
@@ -263,6 +299,7 @@ export function leaguePage(
 ${league.description ? `<p style="color:var(--muted);margin:0 0 18px">${escapeHtml(league.description)}</p>` : ""}
 ${notice(ctx.msg)}${notice(ctx.error, "error")}
 ${joinPanel}
+${calendarPanel}
 <section class="panel">
   <div class="panel__head"><h2>Championship</h2><span class="tag">${escapeHtml(pointsSummary(league))}</span></div>
   ${standingsPanel}
@@ -361,7 +398,7 @@ export function eventPage(
               : "—";
             return `
         <tr>
-          <td>${escapeHtml(e.name)}${e.carNumber ? ` <span style="color:var(--dim)">#${escapeHtml(e.carNumber)}</span>` : ""}</td>
+          <td>${escapeHtml(e.name)}${e.team ? ` <span style="color:var(--dim)">${escapeHtml(e.team)}</span>` : ""}</td>
           <td><select name="status_${e.userId}" style="background:var(--carbon);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px">
             <option value="">—</option>
             ${["finished", "dnf", "dns", "dsq"].map((s) => `<option value="${s}" ${r?.status === s ? "selected" : ""}>${s.toUpperCase()}</option>`).join("")}

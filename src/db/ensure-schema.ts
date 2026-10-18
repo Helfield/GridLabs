@@ -97,6 +97,23 @@ export async function ensureSchema(): Promise<void> {
 	"updated_at" timestamp DEFAULT now() NOT NULL
 )`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "league_results_event_user_idx" ON "league_results" ("event_id","user_id")`);
+  // League registration now captures SR/DR ratings instead of a car number
+  // (drizzle/0008). Additive: the old car_number column is simply no longer
+  // read. Both are nullable, so existing rows are untouched.
+  await db.execute(sql`ALTER TABLE "league_entries" ADD COLUMN IF NOT EXISTS "sr_rating" real`);
+  await db.execute(sql`ALTER TABLE "league_entries" ADD COLUMN IF NOT EXISTS "dr_rating" real`);
+  // Google Calendar connection on the account, and the per-driver record of
+  // which calendar event was created for each league race (see src/googleCalendar.ts).
+  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_email" text`);
+  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_refresh_token" text`);
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "league_calendar_events" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL REFERENCES "users"("id"),
+	"event_id" integer NOT NULL REFERENCES "league_events"("id"),
+	"google_event_id" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+)`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "league_calendar_events_user_event_idx" ON "league_calendar_events" ("user_id","event_id")`);
   // Discord reaction roles (see schema.ts reactionRoles): a new table, so nothing existing is touched.
   await db.execute(sql`CREATE TABLE IF NOT EXISTS "reaction_roles" (
     "id" serial PRIMARY KEY NOT NULL,

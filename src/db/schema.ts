@@ -9,6 +9,12 @@ export const users = pgTable("users", {
   discordUsername: text("discord_username").notNull(),
   discordAvatarUrl: text("discord_avatar_url"),
   apiToken: text("api_token").unique(),
+  // Set when a member connects their Google account (see src/googleCalendar.ts
+  // and the /league/calendar routes). The refresh token lets the site write
+  // league races straight into their calendar without them being present;
+  // the email is stored only so the account page can show what's connected.
+  googleEmail: text("google_email"),
+  googleRefreshToken: text("google_refresh_token"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
 });
@@ -142,8 +148,11 @@ export const leagueEntries = pgTable(
     id: serial("id").primaryKey(),
     leagueId: integer("league_id").notNull().references(() => leagues.id),
     userId: integer("user_id").notNull().references(() => users.id),
-    carNumber: text("car_number"),
     team: text("team"),
+    // The driver's LMU ratings as they gave them at registration: Safety
+    // Rating and Driver Rating. Optional -- left null if not supplied.
+    srRating: real("sr_rating"),
+    drRating: real("dr_rating"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({ perDriver: uniqueIndex("league_entries_league_user_idx").on(t.leagueId, t.userId) }),
@@ -176,6 +185,23 @@ export const leagueResults = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({ perDriver: uniqueIndex("league_results_event_user_idx").on(t.eventId, t.userId) }),
+);
+
+// The Google Calendar event the site created in each connected driver's
+// calendar for each league race, so a later edit can update that same event
+// and a deletion can remove it, rather than leaving duplicates behind.
+// Only drivers who connected Google AND are registered for the league get a
+// row. See src/googleCalendar.ts and the sync helpers in db/league.ts.
+export const leagueCalendarEvents = pgTable(
+  "league_calendar_events",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id),
+    eventId: integer("event_id").notNull().references(() => leagueEvents.id),
+    googleEventId: text("google_event_id").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({ perDriverEvent: uniqueIndex("league_calendar_events_user_event_idx").on(t.userId, t.eventId) }),
 );
 // Reaction roles: reacting to `messageId` with `emoji` gives a member `roleId`
 // (removing the reaction takes it away). `emoji` is the unicode character, or

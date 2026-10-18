@@ -7,6 +7,7 @@ import { accountRoutes } from "./routes/account";
 import { apiRoutes } from "./routes/api";
 import { getUserById } from "./db/queries";
 import { landingPage } from "./views/landing";
+import { privacyPage } from "./views/privacy";
 import { sessionRoutes } from "./routes/session";
 import { libraryRoutes } from "./routes/library";
 import { downloadRoutes } from "./routes/download";
@@ -64,6 +65,10 @@ app.route("/league", leagueRoutes);
 app.get("/", (c) => {
   return c.html(landingPage(DISCORD_INVITE_URL));
 });
+
+// Public privacy policy (no auth) -- linked from the footer and required by
+// Google to publish the OAuth consent screen.
+app.get("/privacy", (c) => c.html(privacyPage()));
 
 // Sends a logged-in user to the right place for their role, so links to
 // "/dashboard" (e.g. from an email, or old bookmarks) always resolve
