@@ -65,12 +65,14 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// One row per track that has a leaderboard message in the Discord
-// channel (see discord/leaderboard.ts). The message is edited in place
-// as laps come in rather than re-posted, which needs its id remembered
-// across restarts; content_hash lets a sync skip the Discord call when
-// nothing on the board changed; leaders records who was fastest in each
-// class at the last sync, so a change of leader can be announced.
+// The row that holds the board is keyed "__board__". Rows keyed
+// "__ann__:..." are left over from the per-driver "new fastest lap"
+// messages, which are no longer posted; they and their messages are kept
+// as they are (see discord/leaderboard.ts). The board message is edited
+// in place as laps come in rather than re-posted, which needs its id
+// remembered across restarts; content_hash lets a sync skip the Discord
+// call when nothing on the board changed. leaders is left over from the
+// announcements and is no longer read.
 export const discordLeaderboardPosts = pgTable("discord_leaderboard_posts", {
   track: text("track").primaryKey(),
   messageId: text("message_id").notNull(),
