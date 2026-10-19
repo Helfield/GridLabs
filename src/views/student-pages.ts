@@ -1,4 +1,4 @@
-import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
+import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime, sectorTime, shortDate, timingClass, timingLegend, lapTimeChart } from "./components";
 import type { TrackProgress } from "../db/queries";
 
@@ -35,7 +35,7 @@ export function studentDashboardPage(
 <div class="phead">
   <div>
     <span class="eyebrow">Driver</span>
-    <h1${headingAttr(navUser.name)}>${escapeHtml(navUser.name)}</h1>
+    <h1>${escapeHtml(navUser.name)}</h1>
     <p class="phead__sub">Every timed lap the app has sent up, newest first.</p>
   </div>
 </div>

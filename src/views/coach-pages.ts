@@ -1,4 +1,4 @@
-import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
+import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime, shortDate, timingClass } from "./components";
 import { statStrip, trackProgressPanel, sessionTowerPanel, refLapPanel } from "./student-pages";
 import type { StudentSummary, TrackProgress } from "../db/queries";
@@ -84,7 +84,7 @@ export function driverDetailPage(
     }
     <div>
       <span class="eyebrow">Driver</span>
-      <h1${headingAttr(driver.name)}>${escapeHtml(driver.name)}</h1>
+      <h1>${escapeHtml(driver.name)}</h1>
       <p class="phead__sub mono">@${escapeHtml(driver.discordUsername)} · ${escapeHtml(driver.email)}</p>
     </div>
   </div>

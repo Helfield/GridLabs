@@ -1,4 +1,4 @@
-import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
+import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime, fullDate, delta } from "./components";
 import { telemetrySection } from "./session-pages";
 import { classDisplayName } from "../classes";
@@ -84,7 +84,7 @@ export function referenceLapPage(navUser: Nav, detail: Detail, checks: LapCheck[
 <div class="phead">
   <div>
     <span class="eyebrow">${escapeHtml(lap.carDisplay || lap.car)}</span>
-    <h1${headingAttr(lap.track)}>${escapeHtml(lap.track)}</h1>
+    <h1>${escapeHtml(lap.track)}</h1>
     <p class="phead__sub">${setBy} &middot; ${escapeHtml(fullDate(lap.createdAt))} &middot; ${escapeHtml(origin)}</p>
   </div>
   <div style="text-align:right">

@@ -1,4 +1,4 @@
-import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
+import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime } from "./components";
 import { classDisplayName } from "../classes";
 import { quarterTurns, rotatePoint } from "../mapOrientation";
@@ -206,7 +206,7 @@ ${noticeHtml}
 <div class="phead">
   <div>
     <span class="eyebrow">Track</span>
-    <h1${headingAttr(track)}>${escapeHtml(track)}</h1>
+    <h1>${escapeHtml(track)}</h1>
     <p class="phead__sub">${lapCount} reference lap${lapCount === 1 ? "" : "s"} across ${classes.length} car class${classes.length === 1 ? "" : "es"} — each class is ranked on its own, fastest first</p>
   </div>
 </div>

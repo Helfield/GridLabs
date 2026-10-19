@@ -10,9 +10,9 @@
  * That's why purple is the primary accent -- in this world it literally
  * means "fastest", which is the whole point of the product.
  *
- * Type: Urban Thunder for big headings, Race Sport for everything else,
- * and IBM Plex Mono (tabular figures) for lap times and other figures, so
- * timing columns align the way a real timing tower does.
+ * Type: Race Sport for all of it, and IBM Plex Mono (tabular figures) for
+ * lap times and other figures, so timing columns align the way a real
+ * timing tower does.
  *
  * Plain CSS rather than a utility framework: no build step for the
  * person running this, no CDN dependency, and precise control over the
@@ -75,7 +75,6 @@ export function layout(
 <meta name="twitter:image" content="${SITE_URL}/og-image.png">
 
 <link rel="preload" href="/fonts/race-sport.ttf" as="font" type="font/ttf" crossorigin>
-<link rel="preload" href="/fonts/urban-thunder-demo.otf" as="font" type="font/otf" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -158,23 +157,10 @@ export function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
-// Urban Thunder maps U+0027 and U+2019 to empty glyphs, and a browser only substitutes a
-// fallback for code points a font leaves out entirely -- so inside a heading the
-// mark disappears rather than borrowing one from the next font in the stack.
-export function headingAttr(text: string): string {
-  return /['’]/.test(String(text)) ? ' class="h-plain"' : "";
-}
-
 const CSS = `
-/* Each font has one weight, so every face claims the full range and the browser never fakes a bold.
-   The metric overrides pin the Windows line metrics so text sits the same way on Mac and iOS. */
-@font-face{
-  font-family:'Urban Thunder';src:url(/fonts/urban-thunder-demo.otf) format('opentype');
-  font-weight:100 900;font-display:swap;ascent-override:93.4%;descent-override:20.5%;line-gap-override:0%;
-  /* The demo draws DEMO boxes for 0-9, so those fall through to the next font in the stack.
-     Its apostrophes are mapped to empty glyphs, which no unicode-range can route around -- see headingAttr(). */
-  unicode-range:U+0-26,U+28-2F,U+3A-2017,U+201A-2025,U+2027-10FFFF;
-}
+/* The one brand face has a single weight, so the face claims the whole range and the
+   browser never fakes a bold. The metric overrides pin the Windows line metrics so text
+   sits the same way on Mac and iOS. */
 @font-face{
   font-family:'Race Sport';src:url(/fonts/race-sport.ttf) format('truetype');
   font-weight:100 900;font-display:swap;ascent-override:106.1%;descent-override:37.3%;line-gap-override:0%;
@@ -184,7 +170,7 @@ const CSS = `
   unicode-range:U+0-20,U+22-24,U+27-2E,U+30-10FFFF;
 }
 :root{
-  --font-display:'Urban Thunder','Race Sport',system-ui,sans-serif;
+  --font-display:'Race Sport',system-ui,sans-serif;
   --font-text:'Race Sport',system-ui,sans-serif;
   --carbon:#0B0E14;
   --panel:#131822;
@@ -219,7 +205,6 @@ body{
 a{color:inherit}
 h1,h2,h3{margin:0;font-weight:700;line-height:1.1}
 h1{font-family:var(--font-display)}
-h1.h-plain{font-family:var(--font-text)}
 p{margin:0}
 
 .shell{width:100%;max-width:var(--shell);margin:0 auto;padding:44px 24px 96px;flex:1}
@@ -395,11 +380,6 @@ input:focus:not([type="checkbox"]):not([type="radio"]),select:focus,textarea:foc
 .card-signup__fine{font-size:13px;color:#6F7C90;margin-top:14px;line-height:1.55}
 .card-signup__fine a{color:#B9C2D0;text-decoration:underline;text-underline-offset:2px}
 
-.how h2{font-family:var(--font-display);font-size:30px;margin-bottom:32px}
-.how__steps{display:grid;grid-template-columns:repeat(3,1fr);gap:48px}
-.how__step h3{font-size:17px;font-weight:600;line-height:1.35;margin-bottom:10px}
-.how__step p{color:#A3AEBF;font-size:15px;line-height:1.65}
-
 .foot{margin-top:auto}
 .foot__inner{
   max-width:var(--shell);margin:0 auto;padding:28px 24px;display:flex;justify-content:space-between;gap:14px;
@@ -428,7 +408,6 @@ input:focus:not([type="checkbox"]):not([type="radio"]),select:focus,textarea:foc
   .hero-bg::after{background:linear-gradient(180deg,rgba(11,14,20,.5) 0,rgba(11,14,20,.8) 35%,var(--carbon) 100%)}
   .hero{grid-template-columns:1fr;gap:36px;padding:10px 0 44px}
   .grid-2{grid-template-columns:1fr}
-  .how__steps{grid-template-columns:1fr;gap:26px}
   .nav__links{display:none}
   .shell{padding:26px 18px 56px}
   .nav__inner,.foot__inner{padding-left:18px;padding-right:18px}

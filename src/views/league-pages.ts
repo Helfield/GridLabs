@@ -1,4 +1,4 @@
-import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
+import { layout, escapeHtml, type NavUser } from "./layout";
 import { shortDate, lapTime } from "./components";
 import type { League, LeagueEvent, Entry, EventResult, StandingRow, AppRaceRecord, CheckVerdict } from "../db/league";
 import { checkAgainstApp, parsePointsTable, LICENCE_BANDS } from "../db/league";
@@ -291,7 +291,7 @@ export function leaguePage(
 <div class="phead">
   <div>
     <span class="eyebrow">League</span>
-    <h1${headingAttr(league.name)}>${escapeHtml(league.name)}</h1>
+    <h1>${escapeHtml(league.name)}</h1>
     <p class="phead__sub">${entries.length} ${entries.length === 1 ? "driver" : "drivers"} · ${events.length} ${events.length === 1 ? "event" : "events"}</p>
   </div>
 </div>
@@ -446,7 +446,7 @@ ${
 <div class="phead">
   <div>
     <span class="eyebrow">Round ${event.round}</span>
-    <h1${headingAttr(event.name)}>${escapeHtml(event.name)}</h1>
+    <h1>${escapeHtml(event.name)}</h1>
     <p class="phead__sub">${escapeHtml(event.track)} · ${escapeHtml(dateTimeUtc(event.eventDate))}</p>
   </div>
 </div>

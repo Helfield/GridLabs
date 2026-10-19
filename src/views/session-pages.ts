@@ -1,4 +1,4 @@
-import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
+import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime, sectorTime, delta, fullDate, timingClass, lapTimeChart } from "./components";
 import { quarterTurns, rotatePoint } from "../mapOrientation";
 
@@ -249,7 +249,7 @@ ${promotedBanner}
 <div class="phead">
   <div>
     <span class="eyebrow">${escapeHtml(session.car)}</span>
-    <h1${headingAttr(session.track)}>${escapeHtml(session.track)}</h1>
+    <h1>${escapeHtml(session.track)}</h1>
     <p class="phead__sub">${escapeHtml(fullDate(session.createdAt))}</p>
   </div>
   <div style="text-align:right">

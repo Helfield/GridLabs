@@ -46,7 +46,7 @@ const STATIC_ASSETS = [
 for (const file of STATIC_ASSETS) {
   app.get(`/${file}`, serveStatic({ path: `./public/${file}` }));
 }
-const FONTS = ["race-sport.ttf", "urban-thunder-demo.otf"] as const;
+const FONTS = ["race-sport.ttf"] as const;
 for (const file of FONTS) {
   app.get(
     `/fonts/${file}`,
