@@ -22,12 +22,16 @@ export function landingPage(inviteUrl: string): string {
   <div>
     <h1>See where you lose time in Le&nbsp;Mans Ultimate</h1>
     <p class="lede">
-      The Grid Labs app records your laps while you drive and compares each one to a
-      reference lap. That can be your own best lap or one from a faster driver in the Discord.
+      The Grid Labs app records every lap you drive and compares it to a reference lap, your own
+      best or the quickest valid one in the club for your car.
     </p>
     <p class="lede">
-      You get the braking points, the line, the gear you used in each corner, and the time
-      gained or lost in every sector.
+      You get the braking point in metres, the gear through the corner, where your line was off,
+      and the delta in every sector, on an overlay over the track and read out by a race engineer.
+    </p>
+    <p class="hint">
+      Setups travel with the laps, so you can run what a faster driver ran. Every lap you finish
+      builds the club leaderboards and the league standings.
     </p>
     ${deltaTraceDiagram()}
   </div>
@@ -79,7 +83,7 @@ export function landingPage(inviteUrl: string): string {
 
   return layout("Coaching for Le Mans Ultimate", body, null, {
     description:
-      "The Grid Labs app records your Le Mans Ultimate laps and compares them to a reference lap, so you can see where you're losing time. Free for members of the Grid Labs Discord.",
+      "Grid Labs records your Le Mans Ultimate laps and compares them to a reference lap, with an on-track overlay, voice engineer and club leaderboards. Free for Discord members.",
   });
 }
 
