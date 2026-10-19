@@ -57,33 +57,6 @@ export function landingPage(inviteUrl: string): string {
   </div>
 </section>
 
-<section class="how">
-  <h2>How it works</h2>
-  <div class="how__steps">
-    <div class="how__step">
-      <h3>Record a reference lap</h3>
-      <p>
-        Run the app and drive a clean lap. It saves the line, braking, gears and sector times
-        to a file. You can send that file to someone else, or load one a quicker driver made.
-      </p>
-    </div>
-    <div class="how__step">
-      <h3>Drive against it</h3>
-      <p>
-        Put the app on a second screen. It shows a map of the track ahead that turns with your
-        car, with the braking zones marked and the reference line drawn next to yours.
-      </p>
-    </div>
-    <div class="how__step">
-      <h3>Check it afterwards</h3>
-      <p>
-        Your laps upload here when you finish. They're grouped by session, so you can compare
-        this week's driving with last week's.
-      </p>
-    </div>
-  </div>
-</section>
-
 <script>
 // Phones and reduced-motion users keep the poster and never download the video.
 (function () {
