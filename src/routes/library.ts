@@ -9,7 +9,7 @@ import {
   getPublicReferenceLapDetail,
 } from "../db/queries";
 import { lapChecks } from "../db/promotions";
-import { deleteReferenceLap, setSessionExcluded } from "../db/queries";
+import { deleteReferenceLap, setSessionExcluded, carClass } from "../db/queries";
 import { afterModeration } from "./session";
 import { db } from "../db/client";
 import { referenceLaps } from "../db/schema";
@@ -36,7 +36,16 @@ libraryRoutes.get("/track/:track", async (c) => {
   const track = decodeURIComponent(c.req.param("track"));
   const { classes, sampleData } = await getPublicLapsForTrack(track);
   const q = c.req.query("removed");
-  const notice = q === "dq" ? "removed-dq" : q === "1" ? "removed" : null;
+  const cls = c.req.query("cls");
+  const lapTimeSeconds = Number(c.req.query("t"));
+  const notice =
+    q === undefined
+      ? null
+      : {
+          disqualified: q === "dq",
+          carClass: cls ? cls.slice(0, 24) : null,
+          lapTimeSeconds: Number.isFinite(lapTimeSeconds) ? lapTimeSeconds : null,
+        };
   return c.html(trackDetailPage(user, track, classes, sampleData, notice));
 });
 
@@ -72,7 +81,7 @@ libraryRoutes.post("/lap/:id/remove", async (c) => {
 
   const lap = await db.query.referenceLaps.findFirst({
     where: eq(referenceLaps.id, id),
-    columns: { id: true, track: true, autoPromoted: true, sourceSessionId: true },
+    columns: { id: true, track: true, car: true, lapTimeSeconds: true, autoPromoted: true, sourceSessionId: true },
   });
   if (!lap) return c.text("Reference lap not found.", 404);
 
@@ -83,7 +92,13 @@ libraryRoutes.post("/lap/:id/remove", async (c) => {
   await deleteReferenceLap(id);
   await afterModeration(lap.track);
 
-  return c.redirect(`/library/track/${encodeURIComponent(lap.track)}?removed=${disqualify ? "dq" : "1"}`);
+  // The page that loads next has already refilled the class, so carry the
+  // removed lap's class and time over to say what happened to it.
+  const params = new URLSearchParams({ removed: disqualify ? "dq" : "1" });
+  const cls = carClass(lap.car);
+  if (cls) params.set("cls", cls);
+  if (lap.lapTimeSeconds !== null) params.set("t", String(lap.lapTimeSeconds));
+  return c.redirect(`/library/track/${encodeURIComponent(lap.track)}?${params.toString()}`);
 });
 
 // Serve the lap as a .json file the app's "Import lap" button accepts.

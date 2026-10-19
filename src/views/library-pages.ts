@@ -154,17 +154,45 @@ ${LIBRARY_CSS}`;
   return layout("Reference laps", body, navUser);
 }
 
+/**
+ * What the page says after a coach removes a lap. Saying only "removed"
+ * reads like nothing happened, because the next-fastest valid lap in that
+ * class is published in the same second -- so the notice names the lap
+ * that took its place, or says the class board is now empty.
+ */
+export type RemovalNotice = {
+  disqualified: boolean;
+  carClass: string | null;
+  lapTimeSeconds: number | null;
+};
+
 export function trackDetailPage(
   navUser: Nav,
   track: string,
   classes: ClassGroup[],
   sampleData: unknown | null,
-  notice: "removed" | "removed-dq" | null = null,
+  notice: RemovalNotice | null = null,
 ): string {
   const isCoach = navUser.role === "coach";
-  const noticeHtml = notice
-    ? `<section class="panel" style="margin-bottom:28px;border-color:var(--pb)"><div class="panel__body"><strong style="color:var(--pb)">Lap removed.</strong> ${notice === "removed-dq" ? "It came from a driver's session, so that lap was also disqualified (it's off the leaderboard and won't be published again). You can restore it from the lap's session page." : ""}</div></section>`
-    : "";
+  let noticeHtml = "";
+  if (notice) {
+    const cls = notice.carClass ? className(notice.carClass) : null;
+    const nowFastest = notice.carClass
+      ? (classes.find((c) => c.carClass === notice.carClass)?.laps[0] ?? null)
+      : null;
+    const outcome = !cls
+      ? ""
+      : nowFastest
+        ? ` The ${cls} board here is not empty: the fastest lap now listed is ${escapeHtml(
+            lapTime(nowFastest.lapTimeSeconds ?? null),
+          )}.`
+        : ` The ${cls} board here is empty now, with no valid lap left to publish.`;
+    const how = notice.disqualified
+      ? " It came from a driver's session, so that session was disqualified too and won't be published again. You can restore it from the lap's session page."
+      : " It was a reference lap on its own, not from a session, so nothing was disqualified.";
+    const removed = notice.lapTimeSeconds === null ? "" : ` (${escapeHtml(lapTime(notice.lapTimeSeconds))})`;
+    noticeHtml = `<section class="panel" style="margin-bottom:28px;border-color:var(--pb)"><div class="panel__body"><strong style="color:var(--pb)">Lap removed${removed}.</strong>${how}${outcome}</div></section>`;
+  }
   const lapCount = classes.reduce((n, c) => n + c.laps.length, 0);
 
   const classPanels =
