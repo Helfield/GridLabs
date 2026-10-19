@@ -1,4 +1,4 @@
-import { layout, escapeHtml, type NavUser } from "./layout";
+import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
 import { lapTime, fullDate, delta } from "./components";
 import { telemetrySection } from "./session-pages";
 import { classDisplayName } from "../classes";
@@ -84,7 +84,7 @@ export function referenceLapPage(navUser: Nav, detail: Detail, checks: LapCheck[
 <div class="phead">
   <div>
     <span class="eyebrow">${escapeHtml(lap.carDisplay || lap.car)}</span>
-    <h1>${escapeHtml(lap.track)}</h1>
+    <h1${headingAttr(lap.track)}>${escapeHtml(lap.track)}</h1>
     <p class="phead__sub">${setBy} &middot; ${escapeHtml(fullDate(lap.createdAt))} &middot; ${escapeHtml(origin)}</p>
   </div>
   <div style="text-align:right">
@@ -126,7 +126,7 @@ export function referenceLapPage(navUser: Nav, detail: Detail, checks: LapCheck[
 ${telemetrySection({ track: lap.track, data: lap.data }, fastest)}
 
 <style>
-.check-row{display:flex;gap:14px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.check-row{display:flex;gap:14px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--hair)}
 .check-row:last-of-type{border-bottom:none}
 .check-mark{font-size:20px;line-height:1.2;width:20px;text-align:center;flex:0 0 auto}
 .check-name{font-weight:600}

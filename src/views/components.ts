@@ -159,9 +159,9 @@ export function deltaTraceDiagram(): string {
   const sectors = [206, 412];
 
   return `
-<figure class="trace">
+<figure class="trace-demo">
 <svg viewBox="0 0 ${w} ${h}" class="chart" role="img"
-  aria-label="Diagram of a delta trace: the line rises where a lap loses time against the reference and falls where it gains">
+  aria-label="Example delta trace: the line rises where a lap is slower than the reference and falls where it is faster">
   <defs>
     <linearGradient id="lossFill" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="var(--warn)" stop-opacity="0"/>
@@ -177,17 +177,17 @@ export function deltaTraceDiagram(): string {
         `<line x1="${sx}" y1="14" x2="${sx}" y2="${h - 30}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"/>`,
     )
     .join("")}
-  ${["S1", "S2", "S3"]
+  ${["Sector 1", "Sector 2", "Sector 3"]
     .map((label, i) => {
       const cx = i === 0 ? 103 : i === 1 ? 309 : 516;
-      return `<text x="${cx}" y="${h - 12}" text-anchor="middle" fill="var(--dim)"
-        font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing=".14em">${label}</text>`;
+      return `<text x="${cx}" y="${h - 10}" text-anchor="middle" fill="var(--dim)"
+        font-family="Race Sport, sans-serif" font-size="12">${label}</text>`;
     })
     .join("")}
 
   <line x1="0" y1="${mid}" x2="${w}" y2="${mid}" stroke="var(--line)" stroke-width="1"/>
-  <text x="6" y="${mid - 9}" fill="var(--dim)" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing=".1em">LOSING</text>
-  <text x="6" y="${mid + 19}" fill="var(--dim)" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing=".1em">GAINING</text>
+  <text x="6" y="${mid - 16}" fill="var(--dim)" font-family="Race Sport, sans-serif" font-size="12">slower</text>
+  <text x="6" y="${mid + 23}" fill="var(--dim)" font-family="Race Sport, sans-serif" font-size="12">faster</text>
 
   <g clip-path="url(#belowMid)">
     <path d="${path}L${w},${mid}L0,${mid}Z" fill="var(--pb)" opacity=".13"/>
@@ -196,11 +196,8 @@ export function deltaTraceDiagram(): string {
     <path d="${path}L${w},${mid}L0,${mid}Z" fill="url(#lossFill)"/>
   </g>
 
-  <path d="${path}" fill="none" stroke="var(--fastest)" stroke-width="2.4" stroke-linecap="round"
-    stroke-dasharray="1400" stroke-dashoffset="0" style="animation:drawB 1.6s cubic-bezier(.32,.8,.36,1) .25s both"/>
-  <circle cx="320" cy="62" r="4" fill="var(--pb)"/>
-  <circle cx="472" cy="116" r="4" fill="var(--warn)"/>
+  <path d="${path}" fill="none" stroke="var(--fastest)" stroke-width="2.2" stroke-linecap="round"/>
 </svg>
-<figcaption class="chart-note">Delta to your reference lap — where the time actually goes</figcaption>
+<figcaption class="chart-note">Example: the gap to the reference lap over one lap. Above the line you're slower, below it you're faster.</figcaption>
 </figure>`;
 }

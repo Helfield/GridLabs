@@ -10,9 +10,9 @@
  * That's why purple is the primary accent -- in this world it literally
  * means "fastest", which is the whole point of the product.
  *
- * Type has three jobs: Barlow Condensed for signage-style headings,
- * IBM Plex Sans for reading, IBM Plex Mono (tabular figures) for every
- * number, so timing columns align the way a real timing tower does.
+ * Type: Urban Thunder for big headings, Race Sport for everything else,
+ * and IBM Plex Mono (tabular figures) for lap times and other figures, so
+ * timing columns align the way a real timing tower does.
  *
  * Plain CSS rather than a utility framework: no build step for the
  * person running this, no CDN dependency, and precise control over the
@@ -33,7 +33,9 @@ export type NavUser = {
 // (relative paths in OG tags are silently ignored by most of them).
 const SITE_URL = siteUrl();
 const DEFAULT_DESCRIPTION =
-  "Telemetry coaching for Le Mans Ultimate. Compare your lap against a reference corner by corner and see exactly where the time goes.";
+  "Telemetry coaching for Le Mans Ultimate. Compare your laps with a reference lap and see where you're losing time.";
+
+const MARK = `<svg class="mark__g" viewBox="-14 0 116 120" aria-hidden="true"><g transform="skewX(-6)"><polygon fill="var(--white)" points="0,0 100,0 100,22 21,22 21,95 48,95 48,120 0,120"/><polygon fill="var(--fastest)" points="40,49 98,49 98,120 48,120 48,95 73,95 73,71 40,71"/></g></svg>`;
 
 export function layout(
   title: string,
@@ -72,9 +74,11 @@ export function layout(
 <meta name="twitter:description" content="${escapeHtml(description)}">
 <meta name="twitter:image" content="${SITE_URL}/og-image.png">
 
+<link rel="preload" href="/fonts/race-sport.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="preload" href="/fonts/urban-thunder-demo.otf" as="font" type="font/otf" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>${CSS}</style>
 </head>
 <body>
@@ -93,10 +97,10 @@ function navBar(user: NavUser): string {
 <header class="nav">
   <div class="nav__inner">
     <a class="mark" href="/">
-      <span class="mark__bars" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span class="mark__text">GridLabs</span>
+      ${MARK}
+      <span class="mark__text">Grid Labs</span>
     </a>
-    <a class="btn btn--ghost btn--sm" href="/auth/discord/login">Sign in</a>
+    <a class="btn btn--ghost btn--sm" href="/auth/discord/login">Log in</a>
   </div>
 </header>`;
   }
@@ -113,12 +117,12 @@ function navBar(user: NavUser): string {
   <div class="nav__inner">
     <div class="nav__left">
       <a class="mark" href="${home}">
-        <span class="mark__bars" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="mark__text">GridLabs</span>
+        ${MARK}
+        <span class="mark__text">Grid Labs</span>
       </a>
       <nav class="nav__links">
         <a href="${home}">${homeLabel}</a>
-        <a href="/library">Reference Laps</a>
+        <a href="/library">Reference laps</a>
         <a href="/download">Download</a>
         <a href="/league">League</a>
         ${user.role === "coach" ? `<a href="/coach/reference-laps">Upload</a><a href="/coach/discord">Discord</a>` : ""}
@@ -139,8 +143,8 @@ function footer(): string {
   return `
 <footer class="foot">
   <div class="foot__inner">
-    <span>GridLabs · Le Mans Ultimate coaching</span>
-    <span class="foot__note">Members only</span>
+    <span>Grid Labs · Sim racing community and coaching</span>
+    <a href="/privacy">Privacy</a>
   </div>
 </footer>`;
 }
@@ -154,122 +158,145 @@ export function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// Urban Thunder maps U+0027 and U+2019 to empty glyphs, and a browser only substitutes a
+// fallback for code points a font leaves out entirely -- so inside a heading the
+// mark disappears rather than borrowing one from the next font in the stack.
+export function headingAttr(text: string): string {
+  return /['’]/.test(String(text)) ? ' class="h-plain"' : "";
+}
+
 const CSS = `
+/* Each font has one weight, so every face claims the full range and the browser never fakes a bold.
+   The metric overrides pin the Windows line metrics so text sits the same way on Mac and iOS. */
+@font-face{
+  font-family:'Urban Thunder';src:url(/fonts/urban-thunder-demo.otf) format('opentype');
+  font-weight:100 900;font-display:swap;ascent-override:93.4%;descent-override:20.5%;line-gap-override:0%;
+  /* The demo draws DEMO boxes for 0-9, so those fall through to the next font in the stack.
+     Its apostrophes are mapped to empty glyphs, which no unicode-range can route around -- see headingAttr(). */
+  unicode-range:U+0-26,U+28-2F,U+3A-2017,U+201A-2025,U+2027-10FFFF;
+}
+@font-face{
+  font-family:'Race Sport';src:url(/fonts/race-sport.ttf) format('truetype');
+  font-weight:100 900;font-display:swap;ascent-override:106.1%;descent-override:37.3%;line-gap-override:0%;
+  /* Every letter is a wide capital, so at the sizes the layout was set for it overflows fields and labels. */
+  size-adjust:88%;
+  /* Its ! % & / read as I, °l., 8 and a bar. */
+  unicode-range:U+0-20,U+22-24,U+27-2E,U+30-10FFFF;
+}
 :root{
+  --font-display:'Urban Thunder','Race Sport',system-ui,sans-serif;
+  --font-text:'Race Sport',system-ui,sans-serif;
   --carbon:#0B0E14;
   --panel:#131822;
   --panel-2:#1A2130;
   --line:#242C3A;
   --line-soft:#1B2230;
+  /* Blocks are told apart by tone and space, not by drawn edges. This is the only separator
+     left, and it is for rows inside a table -- a shade, not a line. */
+  --hair:rgba(255,255,255,.05);
   --text:#E8ECF4;
   --muted:#8492A6;
   --dim:#5D6A7D;
-  --fastest:#B14BFF;
+  --fastest:#A06BFF;
+  --white:#F3F4F8;
+  --cyan:#38D3E0;
   --pb:#22D07E;
   --warn:#FFB020;
   --discord:#5865F2;
   --shell:1180px;
-  --r:14px;
-  --r-sm:9px;
+  --r:16px;
+  --r-sm:10px;
 }
 *,*::before,*::after{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
+html{color-scheme:dark;-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--carbon);color:var(--text);
-  font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  font-family:var(--font-text);
   font-size:15px;line-height:1.55;font-weight:400;
   -webkit-font-smoothing:antialiased;
   display:flex;flex-direction:column;min-height:100vh;
 }
-/* Faint grid, like a data plot behind the pit-wall screen. */
-body::before{
-  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
-  background-image:linear-gradient(var(--line-soft) 1px,transparent 1px),
-                   linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);
-  background-size:64px 64px;
-  mask-image:radial-gradient(ellipse 90% 60% at 50% 0%,#000 0%,transparent 75%);
-  opacity:.5;
-}
-main,header,footer{position:relative;z-index:1}
 a{color:inherit}
-h1,h2,h3{margin:0;font-family:'Barlow Condensed',sans-serif;font-weight:600;line-height:1.05;letter-spacing:.01em}
+h1,h2,h3{margin:0;font-weight:700;line-height:1.1}
+h1{font-family:var(--font-display)}
+h1.h-plain{font-family:var(--font-text)}
 p{margin:0}
 
-.shell{width:100%;max-width:var(--shell);margin:0 auto;padding:34px 24px 72px;flex:1}
+.shell{width:100%;max-width:var(--shell);margin:0 auto;padding:44px 24px 96px;flex:1}
 .shell--wide{max-width:1320px}
 
 /* ---------- nav ---------- */
-.nav{border-bottom:1px solid var(--line);background:rgba(11,14,20,.82);backdrop-filter:blur(10px);position:sticky;top:0}
-.nav__inner{max-width:var(--shell);margin:0 auto;padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;gap:20px}
-.nav__left{display:flex;align-items:center;gap:28px;min-width:0}
-.nav__links{display:flex;gap:20px}
+.nav{background:rgba(11,14,20,.85);backdrop-filter:blur(10px);position:sticky;top:0;z-index:10}
+.nav__inner{max-width:var(--shell);margin:0 auto;padding:8px 24px;min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.nav__left{display:flex;align-items:center;gap:22px;min-width:0}
+/* Whole labels drop to a second row rather than breaking mid-word when the row runs out of room. */
+.nav__links{display:flex;flex-wrap:wrap;gap:14px}
 .nav__links a{
-  font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.09em;
-  font-size:14px;font-weight:600;color:var(--muted);text-decoration:none;padding:4px 0;
+  font-size:13.5px;font-weight:500;color:var(--muted);text-decoration:none;padding:4px 0;white-space:nowrap;
   border-bottom:2px solid transparent;transition:color .15s,border-color .15s;
 }
 .nav__links a:hover{color:var(--text);border-bottom-color:var(--fastest)}
 .nav__right{display:flex;align-items:center;gap:11px}
 .nav__name{font-size:13.5px;color:var(--muted);white-space:nowrap}
-.mark{display:flex;align-items:center;gap:9px;text-decoration:none;flex-shrink:0}
-.mark__bars{display:flex;gap:2.5px;align-items:flex-end;height:17px}
-.mark__bars i{width:3.5px;background:var(--fastest);border-radius:1px;display:block}
-.mark__bars i:nth-child(1){height:9px;opacity:.45}
-.mark__bars i:nth-child(2){height:13px;opacity:.72}
-.mark__bars i:nth-child(3){height:17px}
-.mark__text{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:19px;letter-spacing:.045em;text-transform:uppercase}
-.avatar{width:27px;height:27px;border-radius:50%;border:1px solid var(--line);object-fit:cover}
+.mark{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}
+.mark__g{width:24px;height:25px;display:block}
+.mark__text{font-weight:700;font-size:20px;letter-spacing:.01em;white-space:nowrap}
+.avatar{width:27px;height:27px;border-radius:50%;border:1px solid var(--hair);object-fit:cover}
 .avatar--fallback{display:grid;place-items:center;background:var(--panel-2);font-size:12px;color:var(--muted)}
-.linkbtn{background:none;border:0;color:var(--dim);font:inherit;font-size:13.5px;cursor:pointer;padding:0}
+.linkbtn{background:none;border:0;color:var(--dim);font:inherit;font-size:13.5px;cursor:pointer;padding:0;white-space:nowrap}
 .linkbtn:hover{color:var(--warn)}
 
 .tag{
-  font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;text-transform:uppercase;
-  letter-spacing:.11em;color:var(--muted);border:1px solid var(--line);
-  padding:2.5px 7px;border-radius:4px;white-space:nowrap;
+  display:inline-block;font-family:var(--font-text);font-size:12px;font-weight:500;line-height:1.6;color:var(--muted);
+  background:var(--panel-2);padding:1px 10px;border-radius:999px;white-space:nowrap;
 }
+/* Roles and on/off values arrive lowercase. */
+.tag::first-letter{text-transform:uppercase}
 
 /* ---------- shared bits ---------- */
-.eyebrow{
-  font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;text-transform:uppercase;
-  letter-spacing:.18em;color:var(--fastest);margin-bottom:14px;display:block;
-}
+.eyebrow{font-size:13.5px;font-weight:500;color:var(--muted);margin-bottom:6px;display:block}
 .eyebrow--muted{color:var(--dim)}
-.lede{color:var(--muted);font-size:16.5px;line-height:1.6;max-width:56ch}
+.lede{color:#A3AEBF;font-size:17px;line-height:1.6;max-width:54ch}
 .mono{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
 
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+/* A transparent border, not "none": the status panels set border-color inline to carry
+   a colour (approved / disqualified / removed), and that only paints if there is a border. */
+.panel{background:var(--panel);border:1px solid transparent;border-radius:var(--r)}
 .panel__head{
   display:flex;align-items:baseline;justify-content:space-between;gap:14px;
-  padding:16px 20px 13px;border-bottom:1px solid var(--line-soft);
+  padding:20px 22px 16px;
 }
-.panel__head h2{font-size:19px;text-transform:uppercase;letter-spacing:.06em}
-.panel__body{padding:18px 20px}
+.panel__head h2{font-size:19px}
+.panel__body{padding:18px 22px}
+/* The head already leaves room below the heading. */
+.panel__head+.panel__body{padding-top:2px}
 
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:9px;
-  font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:16px;
-  text-transform:uppercase;letter-spacing:.07em;
-  padding:12px 22px;border-radius:var(--r-sm);border:1px solid transparent;
+  font-family:var(--font-text);font-weight:600;font-size:15px;line-height:1.3;
+  padding:11px 20px;border-radius:8px;border:1px solid transparent;
   text-decoration:none;cursor:pointer;transition:transform .12s,background .15s,border-color .15s;
 }
 .btn:active{transform:translateY(1px)}
 .btn--discord{background:var(--discord);color:#fff;width:100%}
 .btn--discord:hover{background:#4a56d6}
-.btn--ghost{background:transparent;border-color:var(--line);color:var(--text)}
-.btn--ghost:hover{border-color:var(--fastest);color:#fff}
-.btn--sm{padding:8px 15px;font-size:14px}
+.btn--ghost{background:var(--panel-2);border-color:transparent;color:var(--text)}
+.btn--ghost:hover{background:var(--line);color:#fff}
+.btn--sm{padding:7px 14px;font-size:14px}
 
 .field{display:block;margin-bottom:14px}
-.field__label{
-  display:block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;
-  letter-spacing:.13em;color:var(--muted);margin-bottom:7px;
+.field__label{display:block;font-size:13px;font-weight:500;color:#A3AEBF;margin-bottom:6px}
+/* Controls are a fill, not a box. panel-2 is lighter than both the page and a panel, so the
+   same rule reads as raised wherever it sits. It targets the elements rather than only the
+   ones inside a .field, because a bare input otherwise picks up the browser's own grey box. */
+input:not([type="checkbox"]):not([type="radio"]),select,textarea{
+  background:var(--panel-2);border:1px solid transparent;border-radius:var(--r-sm);
+  padding:11px 13px;color:var(--text);font:inherit;font-size:14.5px;color-scheme:dark;
 }
-.field input,.field select,.field textarea{
-  width:100%;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm);
-  padding:11px 13px;color:var(--text);font:inherit;font-size:14.5px;
+.field input,.field select,.field textarea{width:100%;text-overflow:ellipsis}
+input:focus:not([type="checkbox"]):not([type="radio"]),select:focus,textarea:focus{
+  outline:none;border-color:var(--fastest);box-shadow:0 0 0 3px rgba(160,107,255,.18);
 }
-.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--fastest);box-shadow:0 0 0 3px rgba(177,75,255,.15)}
 
 .empty{text-align:center;padding:38px 20px;color:var(--dim);font-size:14px}
 .empty strong{display:block;color:var(--muted);font-weight:500;margin-bottom:5px}
@@ -277,11 +304,10 @@ p{margin:0}
 /* ---------- timing tower ---------- */
 .tower{width:100%;border-collapse:collapse}
 .tower th{
-  font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;text-transform:uppercase;
-  letter-spacing:.13em;color:var(--dim);text-align:left;
-  padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;
+  font-size:12.5px;font-weight:500;color:var(--dim);text-align:left;
+  padding:11px 14px;border-bottom:1px solid var(--hair);white-space:nowrap;
 }
-.tower td{padding:13px 14px;border-bottom:1px solid var(--line-soft);font-size:14px;vertical-align:middle}
+.tower td{padding:14px;border-bottom:1px solid var(--hair);font-size:14px;vertical-align:middle}
 .tower tr:last-child td{border-bottom:0}
 .tower tbody tr{transition:background .12s}
 .tower tbody tr.is-link{cursor:pointer}
@@ -301,93 +327,108 @@ p{margin:0}
 .t-none{color:var(--dim)}
 
 .legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
-.legend span{display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.legend span{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--dim)}
 .legend i{width:8px;height:8px;border-radius:2px;display:block}
 
 /* ---------- stat strip ---------- */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.stat{background:var(--panel);padding:17px 20px}
-.stat__k{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--dim);margin-bottom:8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0;background:var(--panel);border-radius:var(--r);overflow:hidden}
+.stat{background:var(--panel);padding:20px 22px}
+.stat__k{font-size:12.5px;font-weight:500;color:var(--dim);margin-bottom:8px}
 .stat__v{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:27px;font-weight:500;line-height:1;letter-spacing:-.02em}
 .stat__sub{font-size:12.5px;color:var(--dim);margin-top:6px}
 
 /* ---------- page header ---------- */
-.phead{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:24px}
-.phead h1{font-size:clamp(30px,4vw,42px);text-transform:uppercase;letter-spacing:.02em}
+.phead{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:36px}
+.phead h1{font-size:clamp(30px,4vw,42px)}
 .phead__sub{color:var(--muted);font-size:14.5px;margin-top:6px}
 .backlink{
-  display:inline-flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;
-  font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  display:inline-flex;align-items:center;gap:7px;font-size:13.5px;color:var(--dim);
   text-decoration:none;margin-bottom:18px;
 }
 .backlink:hover{color:var(--fastest)}
 
-.grid-2{display:grid;grid-template-columns:1.55fr .95fr;gap:22px;align-items:start}
-.stack{display:flex;flex-direction:column;gap:22px}
-.mt{margin-top:22px}
+.grid-2{display:grid;grid-template-columns:1.55fr .95fr;gap:32px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:32px}
+.mt{margin-top:32px}
 
 /* ---------- driver row (coach list) ---------- */
 .driver{display:flex;align-items:center;gap:11px;min-width:0}
 .driver__name{font-weight:500}
-.driver__handle{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--dim)}
+.driver__handle{font-size:12.5px;color:var(--dim)}
 
 /* ---------- reference lap list ---------- */
 .reflist{display:flex;flex-direction:column}
-.ref{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-top:1px solid var(--line-soft)}
+.ref{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-top:1px solid var(--hair)}
 .ref:first-child{border-top:0;padding-top:2px}
 .ref__label{font-weight:500;font-size:14px}
-.ref__meta{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--dim);margin-top:3px}
+.ref__meta{font-size:12.5px;color:var(--dim);margin-top:3px}
 .ref__time{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:14.5px;color:var(--muted);white-space:nowrap}
 
 /* ---------- chart ---------- */
 .chart{width:100%;height:auto;display:block;overflow:visible}
-.chart-note{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);margin-top:12px}
+.chart-note{font-size:13px;color:#6F7C90;margin-top:10px}
 
 /* ---------- landing ---------- */
-.hero{display:grid;grid-template-columns:1.15fr .85fr;gap:52px;align-items:center;padding:56px 0 44px}
-.hero h1{font-size:clamp(42px,7vw,76px);text-transform:uppercase;letter-spacing:.005em;line-height:.94}
-.hero h1 em{font-style:normal;color:var(--fastest)}
-.hero .lede{margin-top:20px}
-.trace{margin-top:38px}
-.card-signup{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:26px}
-.card-signup h2{font-size:23px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
-.card-signup__sub{color:var(--muted);font-size:13.5px;margin-bottom:20px}
-.card-signup__fine{font-size:12.5px;color:var(--dim);margin-top:15px;text-align:center;line-height:1.5}
-.card-signup__fine a{color:var(--muted)}
-
-.rule{height:1px;background:var(--line);margin:12px 0 44px}
-.how{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.how__step{background:var(--panel);padding:24px 22px 26px}
-.how__n{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;color:var(--fastest);margin-bottom:12px}
-.how__step h3{font-size:20px;text-transform:uppercase;letter-spacing:.045em;margin-bottom:9px}
-.how__step p{color:var(--muted);font-size:14px;line-height:1.6}
-
-.foot{border-top:1px solid var(--line);margin-top:auto}
-.foot__inner{
-  max-width:var(--shell);margin:0 auto;padding:20px 24px;display:flex;justify-content:space-between;gap:14px;
-  font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+/* Centred on the sign-up card (350px right of the page centre at full width) so the card hides the tunnel's white core. */
+.hero-bg{position:absolute;top:0;left:0;right:0;height:880px;overflow:hidden;z-index:-1;pointer-events:none}
+.hero-bg__video{
+  position:absolute;left:calc(50% + min(350px,30%));top:365px;transform:translate(-50%,-50%);
+  width:clamp(1280px,115%,1800px);height:auto;display:block;opacity:.8;
+  -webkit-mask-image:radial-gradient(closest-side,#000 40%,transparent);
+  mask-image:radial-gradient(closest-side,#000 40%,transparent);
 }
+.hero-bg::after{
+  content:"";position:absolute;inset:0;
+  background:
+    linear-gradient(180deg,rgba(11,14,20,0) 60%,var(--carbon) 100%),
+    linear-gradient(90deg,rgba(11,14,20,.9) 0,rgba(11,14,20,.78) 40%,rgba(11,14,20,.55) 52%,rgba(11,14,20,.15) 64%);
+}
+.hero{display:grid;grid-template-columns:1.2fr .8fr;gap:64px;align-items:start;padding:56px 0 96px}
+.hero h1{font-size:clamp(40px,5.2vw,60px);line-height:1.08;letter-spacing:-.005em;max-width:15ch;margin-bottom:26px}
+.hero .lede{margin-bottom:14px}
+.trace-demo{margin:40px 0 0;padding:20px 20px 16px;border-radius:var(--r);background:#10141C}
+.trace{margin-top:38px}
+.card-signup{position:relative;overflow:hidden;background:var(--panel);border-radius:var(--r);padding:32px 28px 26px}
+.card-signup__livery{position:absolute;top:0;right:0;width:150px;height:66px}
+.card-signup h2{font-family:var(--font-display);font-size:26px;margin:2px 0 6px}
+.card-signup__sub{color:#8D99AB;font-size:14px;margin-bottom:22px;max-width:30ch}
+.card-signup__fine{font-size:13px;color:#6F7C90;margin-top:14px;line-height:1.55}
+.card-signup__fine a{color:#B9C2D0;text-decoration:underline;text-underline-offset:2px}
+
+.how h2{font-family:var(--font-display);font-size:30px;margin-bottom:32px}
+.how__steps{display:grid;grid-template-columns:repeat(3,1fr);gap:48px}
+.how__step h3{font-size:17px;font-weight:600;line-height:1.35;margin-bottom:10px}
+.how__step p{color:#A3AEBF;font-size:15px;line-height:1.65}
+
+.foot{margin-top:auto}
+.foot__inner{
+  max-width:var(--shell);margin:0 auto;padding:28px 24px;display:flex;justify-content:space-between;gap:14px;
+  font-size:13px;color:#6F7C90;
+}
+.foot__inner a{color:inherit;text-decoration:none}
+.foot__inner a:hover{color:var(--text)}
 
 /* ---------- token box ---------- */
 .token{
   font-family:'IBM Plex Mono',monospace;font-size:13px;word-break:break-all;
-  background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--carbon);border:1px solid transparent;border-radius:var(--r-sm);
   padding:14px;color:var(--text);user-select:all;line-height:1.6;
 }
 .hint{color:var(--dim);font-size:12.5px;margin-top:11px;line-height:1.55}
 
 /* ---------- motion + responsive ---------- */
 @keyframes drawA{from{stroke-dashoffset:2600}to{stroke-dashoffset:0}}
-@keyframes drawB{from{stroke-dashoffset:1400}to{stroke-dashoffset:0}}
-@keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
-.rise{animation:rise .5s cubic-bezier(.2,.7,.3,1) both}
-.rise-2{animation-delay:.08s}
-.rise-3{animation-delay:.16s}
 
+/* The staff role pill is the one nav item nobody needs a second time on every page,
+   so it goes before the links have to wrap. */
+@media (max-width:1230px){.nav__right .tag{display:none}}
 @media (max-width:900px){
-  .hero{grid-template-columns:1fr;gap:36px;padding:34px 0 30px}
+  .hero-bg{height:620px}
+  .hero-bg__video{left:50%;top:70px;width:max(820px,190%)}
+  .hero-bg::after{background:linear-gradient(180deg,rgba(11,14,20,.5) 0,rgba(11,14,20,.8) 35%,var(--carbon) 100%)}
+  .hero{grid-template-columns:1fr;gap:36px;padding:10px 0 44px}
   .grid-2{grid-template-columns:1fr}
-  .how{grid-template-columns:1fr}
+  .how__steps{grid-template-columns:1fr;gap:26px}
   .nav__links{display:none}
   .shell{padding:26px 18px 56px}
   .nav__inner,.foot__inner{padding-left:18px;padding-right:18px}

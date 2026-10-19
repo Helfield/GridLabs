@@ -1,4 +1,4 @@
-import { layout, escapeHtml, type NavUser } from "./layout";
+import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
 import { lapTime, sectorTime, delta, fullDate, timingClass, lapTimeChart } from "./components";
 import { quarterTurns, rotatePoint } from "../mapOrientation";
 
@@ -167,7 +167,7 @@ export function sessionDetailPage(
 
   const coachTools = canPromote
     ? `
-<section class="panel" style="margin-bottom:18px;border-color:var(--fastest)">
+<section class="panel" style="margin-bottom:28px;border-color:var(--fastest)">
   <div class="panel__body" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
     <div>
       <strong>Coach tools</strong>
@@ -184,7 +184,7 @@ export function sessionDetailPage(
   // it -- the driver deserves to know why it's missing from the boards.
   const dqBanner = session.excluded
     ? `
-<section class="panel" style="margin-bottom:18px;border-color:var(--warn)">
+<section class="panel" style="margin-bottom:28px;border-color:var(--warn)">
   <div class="panel__body">
     <strong style="color:var(--warn)">Disqualified.</strong>
     This lap doesn't count towards the leaderboards or reference laps.${
@@ -197,7 +197,7 @@ export function sessionDetailPage(
   const moderationTools = canModerate
     ? session.excluded
       ? `
-<section class="panel" style="margin-bottom:18px">
+<section class="panel" style="margin-bottom:28px">
   <div class="panel__body" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
     <div>
       <strong>Disqualified lap</strong>
@@ -209,7 +209,7 @@ export function sessionDetailPage(
   </div>
 </section>`
       : `
-<section class="panel" style="margin-bottom:18px">
+<section class="panel" style="margin-bottom:28px">
   <div class="panel__body">
     <form action="/session/${session.id}/exclude" method="post" style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap" onsubmit="return confirm('Disqualify this lap? It will be removed from the leaderboards and, if it was a reference lap, taken down.')">
       <div style="flex:1;min-width:260px">
@@ -217,7 +217,7 @@ export function sessionDetailPage(
         <p class="hint" style="margin:4px 0 8px">Removes it from the leaderboards, the Discord board and reference laps (the next-fastest valid lap takes over). It stays in the driver's history, marked. You can restore it any time.</p>
         <input type="text" name="reason" maxlength="300" placeholder="Reason (optional) — e.g. cut the chicane" autocomplete="off" style="width:100%">
       </div>
-      <button class="btn btn--ghost" style="border-color:var(--warn);color:var(--warn)" type="submit">Disqualify lap</button>
+      <button class="btn btn--ghost" style="background:rgba(255,176,32,.16);color:var(--warn)" type="submit">Disqualify lap</button>
     </form>
   </div>
 </section>`
@@ -225,14 +225,14 @@ export function sessionDetailPage(
 
   const moderationBanner = moderation
     ? `
-<section class="panel" style="margin-bottom:18px;border-color:${moderation === "disqualified" ? "var(--warn)" : "var(--pb)"}">
+<section class="panel" style="margin-bottom:28px;border-color:${moderation === "disqualified" ? "var(--warn)" : "var(--pb)"}">
   <div class="panel__body"><strong>${moderation === "disqualified" ? "Lap disqualified." : "Lap restored."}</strong> Leaderboards and reference laps have been updated.</div>
 </section>`
     : "";
 
   const promotedBanner = justPromoted
     ? `
-<section class="panel" style="margin-bottom:18px;border-color:var(--pb)">
+<section class="panel" style="margin-bottom:28px;border-color:var(--pb)">
   <div class="panel__body"><strong style="color:var(--pb)">Published.</strong> This lap is now a public reference lap — students will see it under "Shared with you".</div>
 </section>`
     : "";
@@ -249,7 +249,7 @@ ${promotedBanner}
 <div class="phead">
   <div>
     <span class="eyebrow">${escapeHtml(session.car)}</span>
-    <h1>${escapeHtml(session.track)}</h1>
+    <h1${headingAttr(session.track)}>${escapeHtml(session.track)}</h1>
     <p class="phead__sub">${escapeHtml(fullDate(session.createdAt))}</p>
   </div>
   <div style="text-align:right">
@@ -484,7 +484,7 @@ export function telemetrySection(session: { track: string; data?: unknown }, ref
   </div>
 
   <div class="panel__body">
-    <div class="stats" style="margin-bottom:18px">
+    <div class="stats" style="margin-bottom:28px">
       <div class="stat">
         <div class="stat__k">Top speed</div>
         <div class="stat__v">${maxSpeed.toFixed(0)}<span style="font-size:15px;color:var(--dim)"> kph</span></div>
@@ -547,7 +547,7 @@ export function telemetrySection(session: { track: string; data?: unknown }, ref
     </div>
   </div>
 
-  <div class="panel__head" style="border-top:1px solid var(--line-soft)">
+  <div class="panel__head" style="border-top:1px solid var(--hair)">
     <h2>Corners</h2><span class="tag">${apexes.length} found</span>
   </div>
   <table class="tower">
@@ -556,14 +556,14 @@ export function telemetrySection(session: { track: string; data?: unknown }, ref
     </thead>
     <tbody>${cornerRows}</tbody>
   </table>
-  <div class="panel__body" style="border-top:1px solid var(--line-soft)">
+  <div class="panel__body" style="border-top:1px solid var(--hair)">
     <p class="hint">Corners are the slowest point of each braking-and-turning phase, found from the speed trace. Click a row to jump the cursor there.</p>
   </div>
 </section>
 
 <style>
 .telemetry{display:grid;grid-template-columns:360px 1fr;gap:22px;align-items:start}
-.telemetry__map svg{width:100%;height:auto;display:block;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm)}
+.telemetry__map svg{width:100%;height:auto;display:block;background:var(--carbon);border-radius:var(--r-sm)}
 .telemetry__traces{min-width:0}
 .telemetry__readout{
   display:flex;flex-wrap:wrap;gap:18px;font-family:'IBM Plex Mono',monospace;
@@ -575,7 +575,7 @@ export function telemetrySection(session: { track: string; data?: unknown }, ref
   display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.13em;
   text-transform:uppercase;color:var(--dim);margin-bottom:5px;
 }
-.trace svg{width:100%;height:160px;display:block;background:var(--carbon);border:1px solid var(--line);border-radius:var(--r-sm);cursor:crosshair;touch-action:none}
+.trace svg{width:100%;height:160px;display:block;background:var(--carbon);border-radius:var(--r-sm);cursor:crosshair;touch-action:none}
 @media (max-width:900px){.telemetry{grid-template-columns:1fr}}
 </style>
 

@@ -1,4 +1,4 @@
-import { layout, escapeHtml, type NavUser } from "./layout";
+import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
 import { lapTime } from "./components";
 import { classDisplayName } from "../classes";
 import { quarterTurns, rotatePoint } from "../mapOrientation";
@@ -163,7 +163,7 @@ export function trackDetailPage(
 ): string {
   const isCoach = navUser.role === "coach";
   const noticeHtml = notice
-    ? `<section class="panel" style="margin-bottom:18px;border-color:var(--pb)"><div class="panel__body"><strong style="color:var(--pb)">Lap removed.</strong> ${notice === "removed-dq" ? "It came from a driver's session, so that lap was also disqualified (it's off the leaderboard and won't be published again). You can restore it from the lap's session page." : ""}</div></section>`
+    ? `<section class="panel" style="margin-bottom:28px;border-color:var(--pb)"><div class="panel__body"><strong style="color:var(--pb)">Lap removed.</strong> ${notice === "removed-dq" ? "It came from a driver's session, so that lap was also disqualified (it's off the leaderboard and won't be published again). You can restore it from the lap's session page." : ""}</div></section>`
     : "";
   const lapCount = classes.reduce((n, c) => n + c.laps.length, 0);
 
@@ -206,7 +206,7 @@ ${noticeHtml}
 <div class="phead">
   <div>
     <span class="eyebrow">Track</span>
-    <h1>${escapeHtml(track)}</h1>
+    <h1${headingAttr(track)}>${escapeHtml(track)}</h1>
     <p class="phead__sub">${lapCount} reference lap${lapCount === 1 ? "" : "s"} across ${classes.length} car class${classes.length === 1 ? "" : "es"} — each class is ranked on its own, fastest first</p>
   </div>
 </div>
@@ -246,16 +246,16 @@ const LIBRARY_CSS = `
 <style>
 .lap-link{color:inherit;text-decoration:none}
 .lap-link:hover{color:var(--fastest);text-decoration:underline}
-.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:18px}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:24px}
 .tcard{
-  display:block;text-decoration:none;background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--r);overflow:hidden;transition:border-color .15s,transform .12s;
+  display:block;text-decoration:none;background:var(--panel);border:1px solid transparent;
+  border-radius:var(--r);overflow:hidden;transition:background .15s,transform .12s;
 }
-.tcard:hover{border-color:var(--fastest);transform:translateY(-2px)}
-.tcard__map{background:var(--carbon);border-bottom:1px solid var(--line-soft);padding:6px}
+.tcard:hover{background:var(--panel-2);transform:translateY(-2px)}
+.tcard__map{background:var(--carbon);border-bottom:1px solid var(--hair);padding:6px}
 .tcard__body{padding:13px 15px 15px}
 .tcard__name{
-  font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:600;
+  font-size:19px;font-weight:600;
   text-transform:uppercase;letter-spacing:.03em;line-height:1.15;
 }
 .tcard__meta{
@@ -265,8 +265,8 @@ const LIBRARY_CSS = `
 .tcard__classes{margin-top:9px;display:grid;gap:5px}
 .tcard__class{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px}
 .tcard__class .mono{font-family:'IBM Plex Mono',monospace;font-size:13px}
-.stack{display:grid;gap:18px;align-content:start}
-.tag--fastest{color:var(--fastest);border-color:var(--fastest)}
+.stack{display:grid;gap:28px;align-content:start}
+.tag--fastest{color:var(--fastest);background:rgba(160,107,255,.16)}
 .layout{width:100%;height:auto;display:block}
 .layout--empty{opacity:.5}
 </style>`;

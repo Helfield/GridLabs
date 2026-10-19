@@ -40,9 +40,24 @@ const STATIC_ASSETS = [
   "icon-192.png",
   "icon-512.png",
   "og-image.png",
+  "hero-tunnel.jpg",
+  "hero-tunnel.webm",
 ] as const;
 for (const file of STATIC_ASSETS) {
   app.get(`/${file}`, serveStatic({ path: `./public/${file}` }));
+}
+const FONTS = ["race-sport.ttf", "urban-thunder-demo.otf"] as const;
+for (const file of FONTS) {
+  app.get(
+    `/fonts/${file}`,
+    serveStatic({
+      path: `./public/fonts/${file}`,
+      // serveStatic sends no validators, so without this every page load re-downloads the fonts.
+      onFound: (_path, c) => {
+        c.header("Cache-Control", "public, max-age=604800");
+      },
+    }),
+  );
 }
 app.get(
   "/site.webmanifest",
