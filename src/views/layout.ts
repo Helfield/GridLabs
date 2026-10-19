@@ -370,8 +370,6 @@ input:focus:not([type="checkbox"]):not([type="radio"]),select:focus,textarea:foc
 }
 .hero{display:grid;grid-template-columns:1.2fr .8fr;gap:64px;align-items:start;padding:56px 0 96px}
 .hero h1{font-size:clamp(40px,5.2vw,60px);line-height:1.08;letter-spacing:-.005em;max-width:15ch;margin-bottom:26px}
-.hero .lede{margin-bottom:14px}
-.trace-demo{margin:40px 0 0;padding:20px 20px 16px;border-radius:var(--r);background:#10141C}
 .trace{margin-top:38px}
 .card-signup{position:relative;overflow:hidden;background:var(--panel);border-radius:var(--r);padding:32px 28px 26px}
 .card-signup__livery{position:absolute;top:0;right:0;width:150px;height:66px}

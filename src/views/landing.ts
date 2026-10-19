@@ -1,5 +1,4 @@
 import { layout, escapeHtml } from "./layout";
-import { deltaTraceDiagram } from "./components";
 
 // Door-panel stripes from the Grid Labs Aston Martin livery.
 const LIVERY_STRIPE = `
@@ -21,19 +20,6 @@ export function landingPage(inviteUrl: string): string {
 <section class="hero">
   <div>
     <h1>See where you lose time in Le&nbsp;Mans Ultimate</h1>
-    <p class="lede">
-      The Grid Labs app records every lap you drive and compares it to a reference lap, your own
-      best or the quickest valid one in the club for your car.
-    </p>
-    <p class="lede">
-      You get the braking point in metres, the gear through the corner, where your line was off,
-      and the delta in every sector, on an overlay over the track and read out by a race engineer.
-    </p>
-    <p class="hint">
-      Setups travel with the laps, so you can run what a faster driver ran. Every lap you finish
-      builds the club leaderboards and the league standings.
-    </p>
-    ${deltaTraceDiagram()}
   </div>
 
   <div class="card-signup" id="join">
