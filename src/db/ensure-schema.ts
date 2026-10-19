@@ -97,11 +97,11 @@ export async function ensureSchema(): Promise<void> {
 	"updated_at" timestamp DEFAULT now() NOT NULL
 )`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "league_results_event_user_idx" ON "league_results" ("event_id","user_id")`);
-  // League registration now captures SR/DR ratings instead of a car number
-  // (drizzle/0008). Additive: the old car_number column is simply no longer
-  // read. Both are nullable, so existing rows are untouched.
-  await db.execute(sql`ALTER TABLE "league_entries" ADD COLUMN IF NOT EXISTS "sr_rating" real`);
-  await db.execute(sql`ALTER TABLE "league_entries" ADD COLUMN IF NOT EXISTS "dr_rating" real`);
+  // League registration records LMU licence bands now instead of the numeric SR/DR
+  // ratings that were only ever displayed (drizzle/0009). Additive: the old
+  // sr_rating/dr_rating columns are simply no longer read, the way car_number was.
+  await db.execute(sql`ALTER TABLE "league_entries" ADD COLUMN IF NOT EXISTS "sr_band" text`);
+  await db.execute(sql`ALTER TABLE "league_entries" ADD COLUMN IF NOT EXISTS "dr_band" text`);
   // Google Calendar connection on the account, and the per-driver record of
   // which calendar event was created for each league race (see src/googleCalendar.ts).
   await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_email" text`);

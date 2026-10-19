@@ -19,6 +19,22 @@ export type LeagueEvent = typeof leagueEvents.$inferSelect;
 export type ResultStatus = "finished" | "dnf" | "dns" | "dsq";
 export const RESULT_STATUSES: ResultStatus[] = ["finished", "dnf", "dns", "dsq"];
 
+/** LMU licence bands for SR and DR, lowest to highest. What registration offers as choices. */
+export const LICENCE_BANDS: string[] = [
+  "Bronze 1",
+  "Bronze 2",
+  "Bronze 3",
+  "Silver 1",
+  "Silver 2",
+  "Silver 3",
+  "Gold 1",
+  "Gold 2",
+  "Gold 3",
+  "Platinum 1",
+  "Platinum 2",
+  "Platinum 3",
+];
+
 /** The staff roles: a coach has the lot, a moderator runs events and results. */
 export function isStaff(role: string | null | undefined): boolean {
   return role === "coach" || role === "moderator";
@@ -72,8 +88,8 @@ export async function getEntries(leagueId: number) {
       id: leagueEntries.id,
       userId: leagueEntries.userId,
       team: leagueEntries.team,
-      srRating: leagueEntries.srRating,
-      drRating: leagueEntries.drRating,
+      srBand: leagueEntries.srBand,
+      drBand: leagueEntries.drBand,
       name: users.name,
       discordUsername: users.discordUsername,
       discordAvatarUrl: users.discordAvatarUrl,
@@ -117,8 +133,8 @@ export type StandingRow = {
   userId: number;
   name: string;
   team: string | null;
-  srRating: number | null;
-  drRating: number | null;
+  srBand: string | null;
+  drBand: string | null;
   points: number;
   wins: number;
   podiums: number;
@@ -141,8 +157,8 @@ export async function getStandings(leagueId: number, events: LeagueEvent[]): Pro
       userId: e.userId,
       name: e.name,
       team: e.team,
-      srRating: e.srRating,
-      drRating: e.drRating,
+      srBand: e.srBand,
+      drBand: e.drBand,
       points: 0,
       wins: 0,
       podiums: 0,

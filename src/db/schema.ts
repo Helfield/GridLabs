@@ -149,10 +149,11 @@ export const leagueEntries = pgTable(
     leagueId: integer("league_id").notNull().references(() => leagues.id),
     userId: integer("user_id").notNull().references(() => users.id),
     team: text("team"),
-    // The driver's LMU ratings as they gave them at registration: Safety
-    // Rating and Driver Rating. Optional -- left null if not supplied.
-    srRating: real("sr_rating"),
-    drRating: real("dr_rating"),
+    // The driver's LMU licence bands as they chose them at registration, e.g. "Silver 2".
+    // Optional -- left null if not supplied. (The earlier numeric sr_rating/dr_rating
+    // columns are no longer read; see drizzle/0009.)
+    srBand: text("sr_band"),
+    drBand: text("dr_band"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({ perDriver: uniqueIndex("league_entries_league_user_idx").on(t.leagueId, t.userId) }),
