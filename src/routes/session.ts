@@ -124,7 +124,8 @@ export async function afterModeration(track: string): Promise<void> {
   } catch (err) {
     console.error(`Reference-lap refresh after moderation failed for ${track}:`, err);
   }
-  syncTrackLeaderboard(track).catch((err) => {
+  // A coach's correction is not a record being taken, so no announcement.
+  syncTrackLeaderboard(track, { announce: false }).catch((err) => {
     console.error(`Discord leaderboard sync failed for ${track}:`, err);
   });
 }

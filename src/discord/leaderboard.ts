@@ -15,10 +15,13 @@ import { renderBoardPng, type BoardTrack } from "./board-image";
  * webhook and EDITED IN PLACE whenever the records change. It never
  * moves and never multiplies -- the channel stays a single board.
  *
- * Below it, nothing: records used to get a one-line announcement when
- * they were beaten. That's gone -- the board is the only message this
- * writes, so the channel stays quiet. Announcements already posted are
- * left in place; they're the club's history to delete, not this code's.
+ * Below it, a one-line announcement goes out only when a record is taken
+ * from ANOTHER driver ("New fastest GT3 lap at Monza ... beats X's time
+ * by 0.435s"). Beating your own record, a record appearing for the first
+ * time, and a lap coming off the board because a coach disqualified it
+ * are all quiet: the board just updates. Self-improvements were most of
+ * what used to be posted, so this keeps the channel down to the posts
+ * that change who holds something.
  *
  * Configured entirely by DISCORD_LEADERBOARD_WEBHOOK_URL (Railway ->
  * Variables). Unset means the whole thing is off and every call here
@@ -43,13 +46,18 @@ const BOARD_DESIGN = 1;
 // those still there are cleaned up on the first run -- see publish().)
 const BOARD_KEY = "__board__";
 
-// Announcements are no longer posted. Rows for ones that were are still
-// in this table (per driver as `__ann__:user:<id>`, per track and class
-// before that) and are left alone -- their messages stay in the channel
-// unless someone takes them down by hand. ANN_PREFIX exists only to keep
-// those rows out of the legacy-board sweep below, which would otherwise
-// read them as old one-message-per-track boards and delete them.
+// Announcements are tracked one row per DRIVER, holding the id of their
+// latest "new fastest lap" message, so the next one replaces it instead of
+// piling up when someone is stringing takeovers together -- whether on one
+// track, across classes, or round several circuits. Keyed
+// `__ann__:user:<id>`. ANN_PREFIX covers any announcement row, which keeps
+// it out of the legacy-board sweep in publish() -- that sweep would
+// otherwise read it as an old one-message-per-track board and delete it.
 const ANN_PREFIX = "__ann__:";
+const ANN_USER_PREFIX = "__ann__:user:";
+
+export type Leader = { userId: number; name: string; lapTimeSeconds: number };
+export type Leaders = Record<string, Leader>; // key: `${track}||${class}`
 
 function webhookUrl(): string | null {
   const url = process.env.DISCORD_LEADERBOARD_WEBHOOK_URL?.trim();
@@ -97,13 +105,15 @@ function enqueue<T>(work: () => Promise<T>): Promise<T> {
 
 /**
  * A track's records may have changed (a lap uploaded, disqualified or
- * restored). The board is edited in place if anything moved.
+ * restored). `announce: false` updates the board without announcing a
+ * taken record -- for a coach's correction (disqualifying or restoring a
+ * lap), which changes who holds a record but isn't a time being beaten.
  */
-export function syncTrackLeaderboard(track: string): Promise<void> {
+export function syncTrackLeaderboard(track: string, options: { announce?: boolean } = {}): Promise<void> {
   if (!leaderboardEnabled()) return Promise.resolve();
   return enqueue(async () => {
     await refreshTrack(track);
-    await publish(false);
+    await publish(false, options.announce !== false);
   });
 }
 
@@ -125,20 +135,25 @@ export function syncAllLeaderboards(options: { repost?: boolean } = {}): Promise
 
 // -------------------------------------------------------------- publish
 
-async function publish(repost: boolean): Promise<void> {
+async function publish(repost: boolean, announce = true): Promise<void> {
   const url = webhookUrl();
   if (!url || !boards) return;
   await ensureTable();
 
   const tracks = boardTracks();
+  const leaders = leadersOf();
   const hash = createHash("sha256").update(JSON.stringify({ design: BOARD_DESIGN, tracks })).digest("hex");
 
   const rows = await db.query.discordLeaderboardPosts.findMany();
   const board = rows.find((r) => r.track === BOARD_KEY);
+  const announcements = new Map(rows.filter((r) => r.track.startsWith(ANN_USER_PREFIX)).map((r) => [r.track, r]));
   // The old one-message-per-track boards (and the stray "Unknown Track"
-  // one): delete their messages and forget them. Rows for the
-  // announcements that are no longer posted are deliberately not in here.
+  // one): delete their messages and forget them. Rows for announcements
+  // are deliberately not in here.
   const legacy = rows.filter((r) => r.track !== BOARD_KEY && !r.track.startsWith(ANN_PREFIX));
+
+  // What the records were before this update, to spot one being taken.
+  const before: Leaders | null = board ? ((board.leaders ?? {}) as Leaders) : null;
 
   const unchanged = !!board && board.contentHash === hash && !repost;
   if (!unchanged) {
@@ -164,13 +179,20 @@ async function publish(repost: boolean): Promise<void> {
 
     await db
       .insert(discordLeaderboardPosts)
-      // leaders is what used to make an announcement's "beats X's time"
-      // comparison; nothing reads it now, so the board row clears it.
-      .values({ track: BOARD_KEY, messageId, contentHash: hash, leaders: null, updatedAt: now })
+      .values({ track: BOARD_KEY, messageId, contentHash: hash, leaders, updatedAt: now })
       .onConflictDoUpdate({
         target: discordLeaderboardPosts.track,
-        set: { messageId, contentHash: hash, leaders: null, updatedAt: now },
+        set: { messageId, contentHash: hash, leaders, updatedAt: now },
       });
+  } else if (board && !board.leaders) {
+    // Snapshots were cleared while announcements were switched off. Without
+    // one to compare against, the first record taken after this deploy
+    // would look like it appeared out of nowhere and go unannounced, so
+    // backfill it quietly -- no Discord call.
+    await db
+      .update(discordLeaderboardPosts)
+      .set({ leaders })
+      .where(eq(discordLeaderboardPosts.track, BOARD_KEY));
   }
 
   // Runs after the new board exists, so the channel is never empty in between.
@@ -180,6 +202,66 @@ async function publish(repost: boolean): Promise<void> {
     );
     await db.delete(discordLeaderboardPosts).where(eq(discordLeaderboardPosts.track, old.track));
   }
+
+  // Announce records taken from another driver -- and only those.
+  if (announce && !unchanged && before) {
+    for (const [key, now] of Object.entries(leaders)) {
+      const prev = before[key];
+      if (!isTakeover(prev, now)) continue;
+      const [track, cls] = key.split("||");
+      const posted = await send(
+        "POST",
+        `${url}?wait=true`,
+        { content: takeoverAnnouncement(track, cls, now, prev), allowed_mentions: { parse: [] } },
+        null,
+      );
+
+      // Replace, don't stack: this driver's previous announcement is now
+      // out of date (they've just taken another record). New first, old
+      // second, as with the board.
+      const annKey = ANN_USER_PREFIX + now.userId;
+      const previous = announcements.get(annKey);
+      if (previous) {
+        await deleteMessage(url, previous.messageId).catch((err) =>
+          console.error(`Couldn't delete the previous announcement for ${now.name}:`, err),
+        );
+      }
+      if (posted) {
+        // Remember it in memory too, so a second takeover by the same
+        // driver in this very pass replaces this one rather than stacking.
+        announcements.set(annKey, { track: annKey, messageId: posted } as (typeof rows)[number]);
+        const stamp = new Date();
+        await db
+          .insert(discordLeaderboardPosts)
+          .values({ track: annKey, messageId: posted, contentHash: null, leaders: null, updatedAt: stamp })
+          .onConflictDoUpdate({
+            target: discordLeaderboardPosts.track,
+            set: { messageId: posted, updatedAt: stamp },
+          });
+      }
+    }
+  }
+}
+
+/**
+ * Whether this change of name at the top of a track and class is news:
+ * someone else's record, beaten by more than the rounding on a lap time.
+ * A driver improving their own best, or a record appearing where there
+ * wasn't one, is not.
+ */
+export function isTakeover(prev: Leader | undefined, now: Leader): boolean {
+  if (!prev) return false;
+  if (prev.userId === now.userId) return false;
+  return now.lapTimeSeconds < prev.lapTimeSeconds - 0.0005;
+}
+
+/**
+ * The line posted when a driver takes a record that was someone else's.
+ * Kept apart from publish() so it can be checked without a webhook.
+ */
+export function takeoverAnnouncement(track: string, carClass: string, now: Leader, prev: Leader): string {
+  const by = (prev.lapTimeSeconds - now.lapTimeSeconds).toFixed(3);
+  return `🏆 **New fastest ${classDisplayName(carClass)} lap at ${escapeMd(track)}:** \`${formatLapTime(now.lapTimeSeconds)}\` by **${escapeMd(now.name)}** — beats ${escapeMd(prev.name)}'s \`${formatLapTime(prev.lapTimeSeconds)}\` by ${by}s`;
 }
 
 // ----------------------------------------------------------- the board
@@ -196,6 +278,18 @@ function boardTracks(): BoardTrack[] {
         driver: c.rows[0].name,
       })),
     }));
+}
+
+/** Who holds each track and class right now, keyed `${track}||${class}`. */
+function leadersOf(): Leaders {
+  const out: Leaders = {};
+  for (const board of boards?.values() ?? []) {
+    for (const c of board.classes) {
+      const top = c.rows[0];
+      if (top) out[`${board.track}||${c.carClass}`] = { userId: top.userId, name: top.name, lapTimeSeconds: top.lapTimeSeconds };
+    }
+  }
+  return out;
 }
 
 /** The picture, or null if it can't be drawn (the text board is used instead). */

@@ -90,14 +90,15 @@ failure (400/401).
 ## Discord leaderboard channel
 
 Set `DISCORD_LEADERBOARD_WEBHOOK_URL` (Railway → Variables) to a webhook for
-the channel that should carry the board. The site keeps **one message** there:
+the channel that should carry the board. The site keeps **one board message** there:
 a picture (drawn by the site, in the website's own palette and fonts) of the
 fastest valid lap in every car class on every track, edited in place whenever
-a record changes. Classes are never mixed. Records are updated quietly: nothing
-is announced in the channel, so the board stays the only message the site
-writes.
+a record changes. Classes are never mixed. Below it, a one-line announcement
+goes out when a driver takes a record off **someone else**. Beating your own
+record, a record appearing for the first time, and anything a coach
+disqualifies or restores update the board without posting.
 Tip: right-click the board message in Discord and **Pin** it so it's always one
-click away.
+click away however many announcements go out beneath it.
 
 The picture is `src/discord/board-image.ts` (SVG → PNG via `@resvg/resvg-wasm`,
 fonts bundled in `src/discord/fonts`, so nothing is fetched at runtime). If it

@@ -41,7 +41,7 @@ accountRoutes.post("/name", async (c) => {
 
   // The Discord board shows names as part of its picture, so it needs
   // redrawing. Not awaited: a slow or unreachable Discord must not make
-  // a rename look like it failed.
+  // a rename look like it failed. (No announcement: no time changed.)
   syncAllLeaderboards().catch((err) => {
     console.error("Discord leaderboard refresh after a rename failed:", err);
   });

@@ -200,7 +200,7 @@ ${laps
 <section class="panel" style="margin-top:28px">
   <div class="panel__head"><h2>Discord leaderboard</h2><span class="tag">${discord.enabled ? "on" : "off"}</span></div>
   <div class="panel__body">
-    <p class="hint">The leaderboard channel holds one board: the fastest valid lap in every car class on every track, drawn as a picture and edited in place whenever a record changes (GT3 is never ranked against LMP2). Beaten records update the board quietly, with no announcement in the channel. The fastest lap in each track and class is also published automatically as that class's reference lap ("Publish fastest laps now" runs that on demand). Re-post the board if it ever gets out of step — a message deleted by hand, say — or to move it to the bottom of the channel.</p>
+    <p class="hint">The leaderboard channel holds one board: the fastest valid lap in every car class on every track, drawn as a picture and edited in place whenever a record changes (GT3 is never ranked against LMP2). When a driver takes a record off someone else, a one-line announcement is posted below the board and that driver's previous announcement is replaced. Beating your own record stays quiet, and so does anything you disqualify or restore here. The fastest lap in each track and class is also published automatically as that class's reference lap ("Publish fastest laps now" runs that on demand). Re-post the board if it ever gets out of step — a message deleted by hand, say — or to move it to the bottom of the channel.</p>
     ${discord.notice ? `<p class="hint" style="color:var(--pb)">${escapeHtml(discord.notice)}</p>` : ""}
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
       <form action="/coach/promote-fastest" method="post">
