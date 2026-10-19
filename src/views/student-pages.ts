@@ -1,4 +1,4 @@
-import { layout, escapeHtml, type NavUser } from "./layout";
+import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
 import { lapTime, sectorTime, shortDate, timingClass, timingLegend, lapTimeChart } from "./components";
 import type { TrackProgress } from "../db/queries";
 
@@ -35,7 +35,7 @@ export function studentDashboardPage(
 <div class="phead">
   <div>
     <span class="eyebrow">Driver</span>
-    <h1>${escapeHtml(navUser.name)}</h1>
+    <h1${headingAttr(navUser.name)}>${escapeHtml(navUser.name)}</h1>
     <p class="phead__sub">Every timed lap the app has sent up, newest first.</p>
   </div>
 </div>
@@ -168,7 +168,7 @@ export function trackProgressPanel(progress: TrackProgress[]): string {
     </thead>
     <tbody>${rows}</tbody>
   </table>
-  <div class="panel__body" style="border-top:1px solid var(--line-soft)">
+  <div class="panel__body" style="border-top:1px solid var(--hair)">
     <p class="hint">Gap is your best lap against the quickest reference published for that track in the same class. A dash means nothing has been published to compare against yet.</p>
   </div>
 </section>`;
@@ -256,7 +256,7 @@ export function sessionTowerPanel(rows: SessionRow[], linkBase: string | null): 
       }
       <td class="num col-r laptime ${r.excluded ? "" : timingClass(r.lapTimeSeconds, allLaps)}">${
         r.excluded
-          ? `<span class="tag" style="color:var(--warn);border-color:var(--warn);margin-right:8px" title="Disqualified by a coach">DQ</span><span style="text-decoration:line-through;color:var(--dim)">${escapeHtml(lapTime(r.lapTimeSeconds))}</span>`
+          ? `<span class="tag" style="color:var(--warn);background:rgba(255,176,32,.16);margin-right:8px" title="Disqualified by a coach">DQ</span><span style="text-decoration:line-through;color:var(--dim)">${escapeHtml(lapTime(r.lapTimeSeconds))}</span>`
           : escapeHtml(lapTime(r.lapTimeSeconds))
       }</td>
       <td class="num col-r hide-sm" style="color:var(--dim)">${escapeHtml(shortDate(r.createdAt))}</td>

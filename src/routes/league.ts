@@ -8,6 +8,7 @@ import { users, leagues, leagueEntries, leagueEvents, leagueResults } from "../d
 import { getUserById } from "../db/queries";
 import {
   isStaff,
+  LICENCE_BANDS,
   listLeagues,
   getLeague,
   getEntries,
@@ -63,11 +64,10 @@ function textField(v: unknown, maxLen: number): string {
   return typeof v === "string" ? v.trim().slice(0, maxLen) : "";
 }
 
-/** An optional SR/DR rating: a non-negative number rounded to 4 dp, or null if blank/invalid. */
-function ratingField(v: unknown): number | null {
-  if (typeof v !== "string" || !v.trim()) return null;
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 10000) / 10000 : null;
+/** An optional SR/DR licence band: one of the band names, or null if blank/unknown. */
+function bandField(v: unknown): string | null {
+  const band = typeof v === "string" ? v.trim() : "";
+  return LICENCE_BANDS.includes(band) ? band : null;
 }
 
 /** A datetime-local value ("2026-10-17T19:30"), read as UTC. Null if blank or invalid. */
@@ -309,8 +309,8 @@ leagueRoutes.post("/:id/register", async (c) => {
       leagueId: id,
       userId: user.id,
       team: textField(body.team, 60) || null,
-      srRating: ratingField(body.srRating),
-      drRating: ratingField(body.drRating),
+      srBand: bandField(body.srBand),
+      drBand: bandField(body.drBand),
     })
     .onConflictDoNothing();
   return c.redirect(back(`/league/${id}`, "msg", "You're registered."));

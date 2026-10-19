@@ -14,18 +14,17 @@ export type ReactionRoleRow = {
 
 const START_ROWS = 4;
 
-// Dark form controls. Without color-scheme the browser draws white dropdown
-// lists and inputs; the option rules cover the open list, which ignores the
-// select's own background in some browsers.
+// Dark form controls. color-scheme:dark is set globally, but the option rules are
+// still needed because the open list ignores the select's own background in some browsers.
 const CSS = `
 <style>
 .rr-in{
-  width:100%;padding:11px 13px;background:var(--carbon);border:1px solid var(--line);
+  width:100%;padding:11px 13px;background:var(--panel-2);border:1px solid transparent;
   border-radius:var(--r-sm);color:var(--text);font:inherit;font-size:14.5px;color-scheme:dark;
 }
 .rr-in:focus{outline:none;border-color:var(--fastest);box-shadow:0 0 0 3px rgba(177,75,255,.15)}
 .rr-in::placeholder{color:var(--dim)}
-.rr-in option{background:var(--panel-2);color:var(--text)}
+.rr-in option{background:var(--carbon);color:var(--text)}
 </style>`;
 
 function emojiLabel(key: string): string {
@@ -129,7 +128,7 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
   </section>
 </div>
 
-<section class="panel" style="margin-top:18px">
+<section class="panel" style="margin-top:28px">
   <div class="panel__head"><h2>Temporary voice channels</h2><span class="tag">${opts.voice.lobbyId ? "on" : "off"}</span></div>
   <div class="panel__body">
     <p class="hint">Pick a voice channel to act as the lobby. When a member joins it, the bot makes them a voice channel of their own (right next to the lobby), moves them in, and lets them rename it from Discord. A channel the bot made is deleted once nobody has been in it for 30 seconds. Anyone who rejoins the lobby is put back in the channel they already own.</p>
@@ -150,7 +149,7 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
       </label>
       <button class="btn btn--ghost btn--sm" type="submit"${opts.enabled ? "" : " disabled"}>Set as lobby</button>
     </form>
-    <form action="/coach/discord/voice" method="post" style="margin-top:18px;max-width:520px">
+    <form action="/coach/discord/voice" method="post" style="margin-top:28px;max-width:520px">
       <input type="hidden" name="action" value="create">
       <span class="field__label">Or have the bot create the lobby</span>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
@@ -163,14 +162,14 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
     </form>
     ${
       opts.voice.lobbyId
-        ? `<form action="/coach/discord/voice" method="post" style="margin-top:18px"><input type="hidden" name="action" value="off"><button class="linkbtn" type="submit" style="color:var(--warn)">Turn off temporary voice channels</button></form>`
+        ? `<form action="/coach/discord/voice" method="post" style="margin-top:28px"><input type="hidden" name="action" value="off"><button class="linkbtn" type="submit" style="color:var(--warn)">Turn off temporary voice channels</button></form>`
         : ""
     }
   </div>
 </section>
 
 <template id="rr-panel-tpl">
-  <section class="panel" style="margin-bottom:18px">
+  <section class="panel" style="margin-bottom:28px">
     <div class="panel__head"><h2 class="rr-title">New reaction roles</h2><button class="linkbtn rr-remove" type="button" style="color:var(--warn)">Remove panel</button></div>
     <div class="panel__body">
       <form action="/coach/discord/panel" method="post">

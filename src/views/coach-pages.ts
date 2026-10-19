@@ -1,4 +1,4 @@
-import { layout, escapeHtml, type NavUser } from "./layout";
+import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
 import { lapTime, shortDate, timingClass } from "./components";
 import { statStrip, trackProgressPanel, sessionTowerPanel, refLapPanel } from "./student-pages";
 import type { StudentSummary, TrackProgress } from "../db/queries";
@@ -84,7 +84,7 @@ export function driverDetailPage(
     }
     <div>
       <span class="eyebrow">Driver</span>
-      <h1>${escapeHtml(driver.name)}</h1>
+      <h1${headingAttr(driver.name)}>${escapeHtml(driver.name)}</h1>
       <p class="phead__sub mono">@${escapeHtml(driver.discordUsername)} · ${escapeHtml(driver.email)}</p>
     </div>
   </div>
@@ -194,7 +194,7 @@ ${laps
     </div>
   </section>
 </div>
-<section class="panel" style="margin-top:18px">
+<section class="panel" style="margin-top:28px">
   <div class="panel__head"><h2>Discord leaderboard</h2><span class="tag">${discord.enabled ? "on" : "off"}</span></div>
   <div class="panel__body">
     <p class="hint">The leaderboard channel holds one board: the fastest valid lap in every car class on every track, drawn as a picture and edited in place whenever a record changes (GT3 is never ranked against LMP2). When a record is beaten, a one-line announcement is posted below it. The fastest lap in each track and class is also published automatically as that class's reference lap ("Publish fastest laps now" runs that on demand). Re-post the board if it ever gets out of step — a message deleted by hand, say — or to move it to the bottom of the channel.</p>

@@ -1,4 +1,4 @@
-import { layout, escapeHtml, type NavUser } from "./layout";
+import { layout, escapeHtml, headingAttr, type NavUser } from "./layout";
 import { NAME_MAX } from "../db/names";
 
 type Nav = NonNullable<NavUser>;
@@ -26,7 +26,7 @@ export function accountPage(
 <div class="phead">
   <div>
     <span class="eyebrow">Account</span>
-    <h1>${escapeHtml(navUser.name)}</h1>
+    <h1${headingAttr(navUser.name)}>${escapeHtml(navUser.name)}</h1>
     <p class="phead__sub">Signed in with Discord · ${escapeHtml(navUser.role)}</p>
   </div>
 </div>
