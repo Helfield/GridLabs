@@ -89,7 +89,7 @@ function layoutSvg(data: any, track: string, width: number, height: number, show
   if (!showBraking) {
     const d = points.map(project).map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
     return `<svg class="layout" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-  <path d="${d}Z" fill="none" stroke="var(--fastest)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" opacity=".85"/>
+  <path d="${d}Z" fill="none" stroke="var(--white)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" opacity=".85"/>
 </svg>`;
   }
 
@@ -99,7 +99,7 @@ function layoutSvg(data: any, track: string, width: number, height: number, show
     const [x1, y1] = project(points[i]);
     const [x2, y2] = project(points[i + 1]);
     const brake = Math.max(points[i].brake ?? 0, points[i + 1].brake ?? 0);
-    const colour = brake > BRAKE_ON ? "#ff3b3b" : "var(--fastest)";
+    const colour = brake > BRAKE_ON ? "#ff3b3b" : "var(--white)";
     segs.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${colour}" stroke-width="4" stroke-linecap="round"/>`);
   }
   return `<svg class="layout" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${segs.join("")}</svg>`;
