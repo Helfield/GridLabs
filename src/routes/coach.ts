@@ -8,7 +8,6 @@ import {
   getPublicReferenceLaps,
   getTrackProgress,
   createReferenceLap,
-  deleteReferenceLap,
 } from "../db/queries";
 import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../views/coach-pages";
 import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
@@ -130,14 +129,6 @@ coachRoutes.post("/reference-laps", async (c) => {
     isPublic: true,
   });
 
-  return c.redirect("/coach/reference-laps");
-});
-
-coachRoutes.post("/reference-laps/:id/delete", async (c) => {
-  const id = Number(c.req.param("id"));
-  if (Number.isFinite(id)) {
-    await deleteReferenceLap(id);
-  }
   return c.redirect("/coach/reference-laps");
 });
 

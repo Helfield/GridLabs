@@ -1,6 +1,7 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
 import { lapTime, shortDate, timingClass } from "./components";
 import { statStrip, trackProgressPanel, sessionTowerPanel, refLapPanel } from "./student-pages";
+import { removeConfirm } from "./library-pages";
 import type { StudentSummary, TrackProgress } from "../db/queries";
 
 type Nav = NonNullable<NavUser>;
@@ -116,6 +117,8 @@ export function referenceLapsPage(
     label: string;
     lapTimeSeconds: number | null;
     createdAt: Date;
+    autoPromoted: boolean;
+    sourceSessionId: number | null;
   }>,
   discord: { enabled: boolean; notice: string | null } = { enabled: false, notice: null },
 ): string {
@@ -135,7 +138,7 @@ ${laps
     </div>
     <div style="display:flex;align-items:center;gap:16px">
       <span class="ref__time">${escapeHtml(lapTime(l.lapTimeSeconds))}</span>
-      <form action="/coach/reference-laps/${l.id}/delete" method="post" onsubmit="return confirm('Remove this reference lap for all students?')">
+      <form action="/library/lap/${l.id}/remove" method="post" onsubmit="return confirm('${removeConfirm(l.autoPromoted && l.sourceSessionId !== null)}')">
         <button class="linkbtn" type="submit" style="color:var(--warn)">Remove</button>
       </form>
     </div>

@@ -259,15 +259,24 @@ ${LIBRARY_CSS}`;
 }
 
 /**
+ * What the Remove button's confirmation says. Shared with the coach's
+ * "Global reference laps" page because both buttons post to the same
+ * route, and that route disqualifies a session-sourced lap -- a coach
+ * has to know before they click, not after.
+ */
+export function removeConfirm(fromSession: boolean): string {
+  return fromSession
+    ? "Remove this reference lap?\\n\\nIt came from a driver session, so that lap will also be disqualified (taken off the leaderboard) to stop it being published again. You can restore it from the session page."
+    : "Remove this reference lap for everyone?";
+}
+
+/**
  * Coach-only "Remove" button. A lap that was published automatically has to
  * be disqualified too, otherwise the next refresh would just publish it
  * again -- the confirm says so, so nobody is surprised.
  */
 export function removeForm(id: number, fromSession: boolean): string {
-  const message = fromSession
-    ? "Remove this reference lap?\\n\\nIt came from a driver session, so that lap will also be disqualified (taken off the leaderboard) to stop it being published again. You can restore it from the session page."
-    : "Remove this reference lap for everyone?";
-  return `<form action="/library/lap/${id}/remove" method="post" style="display:inline" onsubmit="return confirm('${message}')"><button class="btn btn--ghost btn--sm" type="submit" style="color:var(--warn)">Remove</button></form>`;
+  return `<form action="/library/lap/${id}/remove" method="post" style="display:inline" onsubmit="return confirm('${removeConfirm(fromSession)}')"><button class="btn btn--ghost btn--sm" type="submit" style="color:var(--warn)">Remove</button></form>`;
 }
 
 const LIBRARY_CSS = `
