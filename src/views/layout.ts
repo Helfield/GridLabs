@@ -225,18 +225,18 @@ body.wp{background:transparent}
 body.wp::before{
   content:"";position:fixed;inset:0;z-index:-1;
   background:
-    linear-gradient(180deg,rgba(11,14,20,.74),rgba(11,14,20,.88) 55%,rgba(11,14,20,.96)),
+    linear-gradient(180deg,rgba(11,14,20,.62),rgba(11,14,20,.74) 50%,rgba(11,14,20,.86)),
     var(--wp) center/cover no-repeat;
 }
 .wp-asphalt{--wp:url("/bg-asphalt.webp")}
 .wp-kerb{--wp:url("/bg-kerb.webp")}
 .wp-spapark{--wp:url("/bg-spapark.webp")}
-body.wp .panel{background:rgba(19,24,34,.72);backdrop-filter:blur(14px) saturate(130%)}
-body.wp .stats{background:rgba(19,24,34,.72);backdrop-filter:blur(14px) saturate(130%)}
+body.wp .panel{background:rgba(19,24,34,.46);backdrop-filter:blur(8px) saturate(140%)}
+body.wp .stats{background:rgba(19,24,34,.46);backdrop-filter:blur(8px) saturate(140%)}
 body.wp .stat{background:transparent}
 /* The nav already floats on a blurred bar, so it only needs to get out of the
    stacking order the wallpaper pseudo-element occupies. */
-body.wp .nav{background:rgba(11,14,20,.72)}
+body.wp .nav{background:rgba(11,14,20,.66)}
 
 /* ---------- nav ---------- */
 .nav{background:rgba(11,14,20,.85);backdrop-filter:blur(10px);position:sticky;top:0;z-index:10}
