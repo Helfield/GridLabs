@@ -97,5 +97,5 @@ export function accountPage(
   </section>
 </div>`;
 
-  return layout("Account", body, navUser);
+  return layout("Account", body, navUser, { wallpaper: "asphalt" });
 }

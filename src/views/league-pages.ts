@@ -95,7 +95,7 @@ export function leagueIndexPage(
 ${notice(msg)}
 ${cards}
 ${create}`;
-  return layout("Leagues", body, user);
+  return layout("Leagues", body, user, { wallpaper: "spapark" });
 }
 
 // ------------------------------------------------------------------ league
@@ -309,7 +309,7 @@ ${calendarPanel}
 </section>
 ${staffPanels}
 ${coachPanel}`;
-  return layout(league.name, body, user);
+  return layout(league.name, body, user, { wallpaper: "spapark" });
 }
 
 // ------------------------------------------------------------------- event
@@ -457,7 +457,7 @@ ${notice(ctx.msg)}${notice(ctx.error, "error")}
 </section>
 ${entryForm}
 ${editEvent}`;
-  return layout(event.name, body, user, { wide: true });
+  return layout(event.name, body, user, { wide: true, wallpaper: "spapark" });
 }
 
 // ------------------------------------------------------------------- staff
@@ -505,5 +505,5 @@ document.getElementById('q').addEventListener('input', function (e) {
   });
 });
 </script>`;
-  return layout("League staff", body, user);
+  return layout("League staff", body, user, { wallpaper: "spapark" });
 }

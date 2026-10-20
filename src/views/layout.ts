@@ -37,14 +37,18 @@ const DEFAULT_DESCRIPTION =
 
 const MARK = `<svg class="mark__g" viewBox="-14 0 116 120" aria-hidden="true"><g transform="skewX(-6)"><polygon fill="var(--white)" points="0,0 100,0 100,22 21,22 21,95 48,95 48,120 0,120"/><polygon fill="var(--fastest)" points="40,49 98,49 98,120 48,120 48,95 73,95 73,71 40,71"/></g></svg>`;
 
+/** The three photographs used behind signed-in pages. See the wallpapers block in CSS. */
+export type Wallpaper = "asphalt" | "kerb" | "spapark";
+
 export function layout(
   title: string,
   bodyHtml: string,
   user: NavUser = null,
-  options: { wide?: boolean; bare?: boolean; description?: string } = {},
+  options: { wide?: boolean; bare?: boolean; description?: string; wallpaper?: Wallpaper } = {},
 ): string {
   const description = options.description ?? DEFAULT_DESCRIPTION;
   const fullTitle = `${escapeHtml(title)} · GridLabs`;
+  const bodyClass = options.wallpaper ? ` class="wp wp-${options.wallpaper}"` : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -80,7 +84,7 @@ export function layout(
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>${CSS}</style>
 </head>
-<body>
+<body${bodyClass}>
 ${options.bare ? "" : navBar(user)}
 <main class="shell${options.wide ? " shell--wide" : ""}">
 ${bodyHtml}
@@ -194,7 +198,7 @@ const CSS = `
   --r-sm:10px;
 }
 *,*::before,*::after{box-sizing:border-box}
-html{color-scheme:dark;-webkit-text-size-adjust:100%}
+html{color-scheme:dark;-webkit-text-size-adjust:100%;background:var(--carbon)}
 body{
   margin:0;background:var(--carbon);color:var(--text);
   font-family:var(--font-text);
@@ -209,6 +213,30 @@ p{margin:0}
 
 .shell{width:100%;max-width:var(--shell);margin:0 auto;padding:44px 24px 96px;flex:1}
 .shell--wide{max-width:1320px}
+
+/* ---------- wallpapers ----------
+   Signed-in pages sit on one of three photographs, held behind a scrim so
+   the timing colours keep the meaning they carry. The image is pinned to
+   the viewport rather than the document, so a long session tower scrolls
+   over a still picture instead of repeating it. Panels go translucent and
+   blurred, which is what lets the wallpaper read as a surface the UI is
+   resting on rather than a picture behind it. */
+body.wp{background:transparent}
+body.wp::before{
+  content:"";position:fixed;inset:0;z-index:-1;
+  background:
+    linear-gradient(180deg,rgba(11,14,20,.74),rgba(11,14,20,.88) 55%,rgba(11,14,20,.96)),
+    var(--wp) center/cover no-repeat;
+}
+.wp-asphalt{--wp:url("/bg-asphalt.webp")}
+.wp-kerb{--wp:url("/bg-kerb.webp")}
+.wp-spapark{--wp:url("/bg-spapark.webp")}
+body.wp .panel{background:rgba(19,24,34,.72);backdrop-filter:blur(14px) saturate(130%)}
+body.wp .stats{background:rgba(19,24,34,.72);backdrop-filter:blur(14px) saturate(130%)}
+body.wp .stat{background:transparent}
+/* The nav already floats on a blurred bar, so it only needs to get out of the
+   stacking order the wallpaper pseudo-element occupies. */
+body.wp .nav{background:rgba(11,14,20,.72)}
 
 /* ---------- nav ---------- */
 .nav{background:rgba(11,14,20,.85);backdrop-filter:blur(10px);position:sticky;top:0;z-index:10}

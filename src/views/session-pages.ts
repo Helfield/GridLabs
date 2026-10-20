@@ -293,7 +293,7 @@ ${telemetrySection(session, reference)}
   </div>
 </section>`;
 
-  return layout(`${session.track} - ${lapTime(session.lapTimeSeconds)}`, body, navUser, { wide: true });
+  return layout(`${session.track} - ${lapTime(session.lapTimeSeconds)}`, body, navUser, { wide: true, wallpaper: "asphalt" });
 }
 
 /**

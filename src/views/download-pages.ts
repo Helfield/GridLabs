@@ -89,5 +89,5 @@ export function downloadPage(navUser: Nav, downloadUrl: string | null): string {
     </section>
   </div>
 </div>`;
-  return layout("Download", body, navUser);
+  return layout("Download", body, navUser, { wallpaper: "spapark" });
 }

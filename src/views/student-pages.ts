@@ -53,7 +53,7 @@ ${statStrip(studentSessions, referenceLapsOwned.length, progress)}
   </div>
 </div>`;
 
-  return layout("My driving", body, navUser);
+  return layout("My driving", body, navUser, { wallpaper: "asphalt" });
 }
 
 /* ---------- shared panels, also used by the coach's driver view ---------- */

@@ -151,7 +151,7 @@ ${tracks
 </div>
 ${cards}
 ${LIBRARY_CSS}`;
-  return layout("Reference laps", body, navUser);
+  return layout("Reference laps", body, navUser, { wallpaper: "kerb" });
 }
 
 /**
@@ -255,7 +255,7 @@ ${noticeHtml}
   </section>
 </div>
 ${LIBRARY_CSS}`;
-  return layout(track, body, navUser);
+  return layout(track, body, navUser, { wallpaper: "kerb" });
 }
 
 /**

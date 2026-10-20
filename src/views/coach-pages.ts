@@ -64,7 +64,7 @@ export function coachDashboardPage(navUser: Nav, students: StudentSummary[]): st
   <div class="panel__head"><h2>Roster</h2><span class="tag">Ranked by best lap</span></div>
   ${rows}
 </section>`;
-  return layout("Drivers", body, navUser);
+  return layout("Drivers", body, navUser, { wallpaper: "kerb" });
 }
 
 export function driverDetailPage(
@@ -100,7 +100,7 @@ ${statStrip(driverSessions, driverRefLaps.length, progress)}
     ${refLapPanel("Their reference laps", driverRefLaps, "Nothing saved yet — they need a personal best with the app running.")}
   </div>
 </div>`;
-  return layout(driver.name, body, navUser);
+  return layout(driver.name, body, navUser, { wallpaper: "kerb" });
 }
 
 // Coach-only page: upload a reference lap that immediately becomes
@@ -212,5 +212,5 @@ ${laps
     </div>
   </div>
 </section>`;
-  return layout("Global reference laps", body, navUser);
+  return layout("Global reference laps", body, navUser, { wallpaper: "kerb" });
 }

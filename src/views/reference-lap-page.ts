@@ -134,5 +134,5 @@ ${telemetrySection({ track: lap.track, data: lap.data }, fastest)}
 .check-note{color:var(--muted);font-size:13px;margin-top:2px}
 </style>`;
 
-  return layout(`${lap.track} - ${lapTime(lap.lapTimeSeconds)}`, body, navUser, { wide: true });
+  return layout(`${lap.track} - ${lapTime(lap.lapTimeSeconds)}`, body, navUser, { wide: true, wallpaper: "kerb" });
 }
