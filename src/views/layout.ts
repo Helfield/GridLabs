@@ -198,7 +198,7 @@ const CSS = `
   --r-sm:10px;
 }
 *,*::before,*::after{box-sizing:border-box}
-html{color-scheme:dark;-webkit-text-size-adjust:100%;background:var(--carbon)}
+html{color-scheme:dark;-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--carbon);color:var(--text);
   font-family:var(--font-text);
@@ -216,17 +216,20 @@ p{margin:0}
 
 /* ---------- wallpapers ----------
    Signed-in pages sit on one of three photographs, held behind a scrim so
-   the timing colours keep the meaning they carry. The image is pinned to
-   the viewport rather than the document, so a long session tower scrolls
-   over a still picture instead of repeating it. Panels go translucent and
-   blurred, which is what lets the wallpaper read as a surface the UI is
-   resting on rather than a picture behind it. */
-body.wp{background:transparent}
-body.wp::before{
-  content:"";position:fixed;inset:0;z-index:-1;
+   the timing colours keep the meaning they carry. The image is pinned to the
+   viewport rather than the document, so a long session tower scrolls over a
+   still picture instead of repeating it. Panels go translucent and blurred,
+   which is what lets the wallpaper read as a surface the UI is resting on
+   rather than a picture behind it.
+
+   On the body's own background, not a z-index:-1 pseudo-element: the landing
+   page's hero video already lives at -1, and it only stays visible because
+   body's background propagates to the canvas. Give body a competing paint
+   order and the video disappears behind it. */
+body.wp{
   background:
     linear-gradient(180deg,rgba(11,14,20,.62),rgba(11,14,20,.74) 50%,rgba(11,14,20,.86)),
-    var(--wp) center/cover no-repeat;
+    var(--wp) center/cover no-repeat fixed;
 }
 .wp-asphalt{--wp:url("/bg-asphalt.webp")}
 .wp-kerb{--wp:url("/bg-kerb.webp")}
@@ -234,8 +237,6 @@ body.wp::before{
 body.wp .panel{background:rgba(19,24,34,.46);backdrop-filter:blur(8px) saturate(140%)}
 body.wp .stats{background:rgba(19,24,34,.46);backdrop-filter:blur(8px) saturate(140%)}
 body.wp .stat{background:transparent}
-/* The nav already floats on a blurred bar, so it only needs to get out of the
-   stacking order the wallpaper pseudo-element occupies. */
 body.wp .nav{background:rgba(11,14,20,.66)}
 
 /* ---------- nav ---------- */
