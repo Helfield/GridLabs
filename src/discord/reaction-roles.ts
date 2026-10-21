@@ -26,6 +26,22 @@ export async function findRoleFor(messageId: string, emoji: string): Promise<str
   return row?.roleId ?? null;
 }
 
+/**
+ * The other roles this message hands out. One message is treated as one
+ * choice, so a member who clicks a second emoji is moved rather than added to:
+ * see onReaction in gateway.ts for where these get taken back off.
+ */
+export async function otherRolesOnMessage(messageId: string, roleId: string): Promise<string[]> {
+  const rows = await db.select({ roleId: reactionRoles.roleId }).from(reactionRoles).where(eq(reactionRoles.messageId, messageId));
+  return [...new Set(rows.map((r) => r.roleId))].filter((id) => id !== roleId);
+}
+
+/** Role ids a member holds, for the reactions whose event didn't carry them. */
+export async function memberRoleIds(userId: string): Promise<string[]> {
+  const member = await botFetch<{ roles?: string[] }>("GET", `/guilds/${guildId()}/members/${userId}`);
+  return member?.roles ?? [];
+}
+
 async function addBotReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
   await botFetch("PUT", `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`);
 }

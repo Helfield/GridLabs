@@ -1,11 +1,12 @@
 import { botEnabled, guildId } from "./bot-api";
-import { findRoleFor, giveRole, takeRole } from "./reaction-roles";
+import { findRoleFor, giveRole, memberRoleIds, otherRolesOnMessage, takeRole } from "./reaction-roles";
 import { onGuildCreate, onVoiceState, type VoiceState } from "./voice";
 
 /**
  * The bot's live connection to Discord, used for reaction roles: when a member
  * adds (or removes) a reaction on a message set up in /coach/discord, they get
- * (or lose) the matching role.
+ * (or lose) the matching role. One message is one choice, so adding a second
+ * reaction moves them rather than stacking another role on top.
  *
  * It also drives join-to-create voice channels (voice.ts).
  *
@@ -27,6 +28,9 @@ type ReactionEvent = {
   guild_id?: string;
   message_id: string;
   emoji: { id: string | null; name: string | null };
+  // Discord sends the member with a reaction event, but the field is optional,
+  // so the role sweep below falls back to a REST call when it is missing.
+  member?: { roles?: string[] };
 };
 
 let ws: WebSocket | null = null;
@@ -171,6 +175,21 @@ async function onReaction(e: ReactionEvent, added: boolean): Promise<void> {
   if (!emoji) return;
   const roleId = await findRoleFor(e.message_id, emoji);
   if (!roleId) return;
-  if (added) await giveRole(e.user_id, roleId);
-  else await takeRole(e.user_id, roleId);
+  if (!added) {
+    await takeRole(e.user_id, roleId);
+    return;
+  }
+  await giveRole(e.user_id, roleId);
+  // One message is one choice. Discord leaves the earlier reaction in place
+  // when a member clicks a different emoji, so without this a driver moving
+  // from Bronze 3 to Silver 2 keeps both roles and the picker reads as though
+  // it only worked the first time. Grant first, then take the others off, so a
+  // failure here can never leave them with no band at all.
+  const others = await otherRolesOnMessage(e.message_id, roleId);
+  if (others.length === 0) return;
+  const held = e.member?.roles ?? (await memberRoleIds(e.user_id));
+  for (const other of others) {
+    if (!held.includes(other)) continue;
+    await takeRole(e.user_id, other).catch(() => {});
+  }
 }

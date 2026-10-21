@@ -109,7 +109,7 @@ ${CSS}
   <div>
     <span class="eyebrow">Coaching</span>
     <h1>Discord reaction roles</h1>
-    <p class="phead__sub">Members click an emoji on a message and the bot gives them the matching role; un-clicking takes it away.</p>
+    <p class="phead__sub">Members click an emoji on a message and the bot gives them the matching role; un-clicking takes it away. Each message is one choice, so clicking a second emoji takes the first one off and they end up with a single role from it.</p>
   </div>
 </div>
 ${setup}
