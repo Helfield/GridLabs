@@ -3,6 +3,9 @@ import { users, leagues, leagueEntries, leagueEvents, leagueResults, raceResults
 import { eq, and, asc, desc, inArray, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { calendarEnabled, upsertCalendarEvent, deleteCalendarEvent } from "../googleCalendar";
 import { siteUrl } from "../siteUrl";
+import { scoringPosition, rowsFromAppFinish, type AppFinish, type ResultRow } from "../leagueRules";
+import { carClass } from "./queries";
+import { scoringClass, scoringClassRank } from "../classes";
 
 /**
  * League data: registration, the schedule, results entered by the
@@ -12,28 +15,16 @@ import { siteUrl } from "../siteUrl";
  * Points are always computed here from the league's own scoring rules and
  * stored on the result, so changing a rule means re-saving an event's
  * results (see recalculateLeague) rather than every page recomputing.
+ *
+ * The rules themselves -- who may register, which place a result is scored
+ * on, what the app's raw upload means as a grid -- are in src/leagueRules.ts,
+ * which holds no database so every case in it can be tested directly.
  */
 
 export type League = typeof leagues.$inferSelect;
 export type LeagueEvent = typeof leagueEvents.$inferSelect;
 export type ResultStatus = "finished" | "dnf" | "dns" | "dsq";
 export const RESULT_STATUSES: ResultStatus[] = ["finished", "dnf", "dns", "dsq"];
-
-/** LMU licence bands for SR and DR, lowest to highest. What registration offers as choices. */
-export const LICENCE_BANDS: string[] = [
-  "Bronze 1",
-  "Bronze 2",
-  "Bronze 3",
-  "Silver 1",
-  "Silver 2",
-  "Silver 3",
-  "Gold 1",
-  "Gold 2",
-  "Gold 3",
-  "Platinum 1",
-  "Platinum 2",
-  "Platinum 3",
-];
 
 /** The staff roles: a coach has the lot, a moderator runs events and results. */
 export function isStaff(role: string | null | undefined): boolean {
@@ -52,14 +43,15 @@ export function parsePointsTable(text: string): number[] {
 
 export function computePoints(
   league: Pick<League, "pointsTable" | "fastestLapBonus" | "poleBonus" | "participationPoints">,
-  r: { position: number | null; status: string; fastestLap: boolean; pole: boolean; adjustment: number },
+  r: { position: number | null; classPosition?: number | null; status: string; fastestLap: boolean; pole: boolean; adjustment: number },
 ): number {
   // A driver who didn't start, or was disqualified, scores nothing -- not even bonuses.
   if (r.status === "dns" || r.status === "dsq") return Math.min(0, r.adjustment);
+  const position = scoringPosition(r);
   let points = 0;
-  if (r.status === "finished" && r.position && r.position > 0) {
+  if (r.status === "finished" && position && position > 0) {
     const table = parsePointsTable(league.pointsTable);
-    points = table[r.position - 1] ?? league.participationPoints;
+    points = table[position - 1] ?? league.participationPoints;
   } else {
     points = league.participationPoints;
   }
@@ -115,6 +107,8 @@ export async function getEventResults(eventId: number) {
     .select({
       userId: leagueResults.userId,
       position: leagueResults.position,
+      classPosition: leagueResults.classPosition,
+      carClass: leagueResults.carClass,
       status: leagueResults.status,
       fastestLap: leagueResults.fastestLap,
       pole: leagueResults.pole,
@@ -135,6 +129,8 @@ export type StandingRow = {
   team: string | null;
   srBand: string | null;
   drBand: string | null;
+  /** The class they were last scored in, or null if their results carry none. */
+  carClass: string | null;
   points: number;
   wins: number;
   podiums: number;
@@ -143,8 +139,29 @@ export type StandingRow = {
   byEvent: Map<number, number>;
 };
 
-/** Championship table: every registered driver, by total points, then wins, then podiums. */
-export async function getStandings(leagueId: number, events: LeagueEvent[]): Promise<StandingRow[]> {
+/** One championship table. `carClass` is null for a league that scores overall. */
+export type StandingBoard = { carClass: string | null; rows: StandingRow[] };
+
+function rankRows(rows: StandingRow[]): StandingRow[] {
+  return rows.sort(
+    (a, b) => b.points - a.points || b.wins - a.wins || b.podiums - a.podiums || a.name.localeCompare(b.name),
+  );
+}
+
+/**
+ * Championship tables: every registered driver, by total points, then wins,
+ * then podiums.
+ *
+ * One board per class when the results carry classes. In a mixed field the
+ * overall table would be won by whoever brought an LMP2 every single round,
+ * which leaves the GT3 contingent with nothing to race for, so a mixed league
+ * scores and publishes by class. A league that never uses classes comes back
+ * as a single board with a null class, which is what it has always been.
+ *
+ * Wins and podiums count the place the points came from, so a class win reads
+ * as a win.
+ */
+export async function getStandingBoards(leagueId: number, events: LeagueEvent[]): Promise<StandingBoard[]> {
   const entries = await getEntries(leagueId);
   const eventIds = events.map((e) => e.id);
   const results = eventIds.length
@@ -159,6 +176,7 @@ export async function getStandings(leagueId: number, events: LeagueEvent[]): Pro
       team: e.team,
       srBand: e.srBand,
       drBand: e.drBand,
+      carClass: null,
       points: 0,
       wins: 0,
       podiums: 0,
@@ -166,18 +184,42 @@ export async function getStandings(leagueId: number, events: LeagueEvent[]): Pro
       byEvent: new Map(),
     });
   }
+  const byEvent = new Map<number, typeof results[number][]>();
   for (const r of results) {
     const row = rows.get(r.userId);
     if (!row) continue; // withdrew after scoring: their results stay on file but off the table
     row.points += r.points;
     row.byEvent.set(r.eventId, r.points);
     if (r.status !== "dns") row.rounds += 1;
-    if (r.status === "finished" && r.position === 1) row.wins += 1;
-    if (r.status === "finished" && r.position !== null && r.position <= 3) row.podiums += 1;
+    const place = scoringPosition(r);
+    if (r.status === "finished" && place === 1) row.wins += 1;
+    if (r.status === "finished" && place !== null && place <= 3) row.podiums += 1;
+    const group = byEvent.get(r.eventId);
+    if (group) group.push(r);
+    else byEvent.set(r.eventId, [r]);
   }
-  return [...rows.values()].sort(
-    (a, b) => b.points - a.points || b.wins - a.wins || b.podiums - a.podiums || a.name.localeCompare(b.name),
-  );
+  // Their class is the one they were last scored in, read in round order: a
+  // driver who changes car mid-season moves boards rather than being stuck on
+  // the table of the class they started in.
+  for (const e of [...events].sort((a, b) => a.round - b.round)) {
+    for (const r of byEvent.get(e.id) ?? []) {
+      const row = rows.get(r.userId);
+      if (row && r.carClass) row.carClass = r.carClass;
+    }
+  }
+
+  const boards = new Map<string | null, StandingRow[]>();
+  for (const row of rows.values()) {
+    const group = boards.get(row.carClass);
+    if (group) group.push(row);
+    else boards.set(row.carClass, [row]);
+  }
+  // Fastest car first. A driver whose results carry no class sits in the last
+  // board, which is the odd one out rather than a class worth a title.
+  const order = (cls: string | null) => (cls === null ? Number.POSITIVE_INFINITY : scoringClassRank(cls));
+  return [...boards.entries()]
+    .sort((a, b) => order(a[0]) - order(b[0]) || (a[0] ?? "").localeCompare(b[0] ?? ""))
+    .map(([cls, group]) => ({ carClass: cls, rows: rankRows(group) }));
 }
 
 export async function isRegistered(leagueId: number, userId: number): Promise<boolean> {
@@ -193,22 +235,48 @@ export async function isRegistered(leagueId: number, userId: number): Promise<bo
  * drivers the organiser filled in; anyone left out has any earlier result
  * for this event removed, so clearing a row clears the result.
  *
- * Returns an error message when the finishing positions don't make sense
- * (two drivers in the same place), without saving anything.
+ * Returns an error message when the positions don't make sense, without
+ * saving anything: two drivers in the same place, or a mixed-class race where
+ * someone has a class but no class place.
+ *
+ * Classes are all-or-nothing for one event. Half a grid with classes and
+ * half without would score one driver on their class place and another on
+ * their overall place in the same race, and no championship table can mean
+ * anything after that.
  */
 export async function saveEventResults(
   league: League,
   eventId: number,
   enteredBy: number,
-  rows: Array<{ userId: number; position: number | null; status: ResultStatus; fastestLap: boolean; pole: boolean; adjustment: number }>,
+  rows: ResultRow[],
 ): Promise<string | null> {
   const seen = new Set<number>();
+  const classless: number[] = [];
+  const inClass = new Map<string, Set<number>>();
+  const usesClasses = rows.some((r) => r.carClass);
+
   for (const r of rows) {
-    if (r.status === "finished") {
-      if (!r.position || r.position < 1) return "Every finisher needs a finishing position.";
-      if (seen.has(r.position)) return `Two drivers are down for P${r.position}.`;
-      seen.add(r.position);
+    if (r.status !== "finished") continue;
+    if (!r.position || r.position < 1) return "Every finisher needs a finishing position.";
+    if (seen.has(r.position)) return `Two drivers are down for P${r.position}.`;
+    seen.add(r.position);
+    if (!usesClasses) continue;
+    if (!r.carClass) {
+      classless.push(r.userId);
+      continue;
     }
+    if (!r.classPosition || r.classPosition < 1) return `Every finisher needs a class position in ${r.carClass}.`;
+    const places = inClass.get(r.carClass) ?? new Set<number>();
+    if (places.has(r.classPosition)) return `Two ${r.carClass} drivers are down for class P${r.classPosition}.`;
+    places.add(r.classPosition);
+    inClass.set(r.carClass, places);
+  }
+  if (classless.length) {
+    const names = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(inArray(users.id, classless));
+    return `This race has classes, so every finisher needs one: ${names.map((n) => n.name).join(", ")}.`;
   }
 
   await db.transaction(async (tx) => {
@@ -221,16 +289,20 @@ export async function saveEventResults(
       await tx.delete(leagueResults).where(eq(leagueResults.eventId, eventId));
     }
     for (const r of rows) {
-      const position = r.status === "finished" ? r.position : null;
+      const finished = r.status === "finished";
       const values = {
         eventId,
         userId: r.userId,
-        position,
+        position: finished ? r.position : null,
+        // The class stays recorded for a retirement as well: it says what the
+        // driver was in, and the next fill-from-app shouldn't lose it.
+        carClass: r.carClass,
+        classPosition: finished ? r.classPosition : null,
         status: r.status,
         fastestLap: r.fastestLap,
         pole: r.pole,
         adjustment: r.adjustment,
-        points: computePoints(league, { ...r, position }),
+        points: computePoints(league, r),
         enteredBy,
         updatedAt: new Date(),
       };
@@ -336,14 +408,15 @@ export type CheckVerdict = "match" | "differs" | "no-data";
  * entry is compared with the sim's finish status instead.
  */
 export function checkAgainstApp(
-  entered: { position: number | null; status: string },
+  entered: { position: number | null; classPosition?: number | null; status: string },
   app: AppRaceRecord | undefined,
 ): { verdict: CheckVerdict; note: string } {
   if (!app) return { verdict: "no-data", note: "No race recorded by the app" };
   const appStatus = app.finishStatus === 3 ? "dsq" : app.finishStatus === 2 ? "dnf" : "finished";
   const seen = `P${app.place}${app.classPlace && app.classPlace !== app.place ? ` (class P${app.classPlace})` : ""}`;
+  const enteredPlaces = [entered.position, entered.classPosition].filter((p): p is number => p !== null && p !== undefined);
   if (entered.status === "finished") {
-    if (entered.position !== null && (entered.position === app.place || entered.position === app.classPlace)) {
+    if (enteredPlaces.some((p) => p === app.place || p === app.classPlace)) {
       return { verdict: "match", note: `App saw ${seen}` };
     }
     return { verdict: "differs", note: `App saw ${seen}` };
@@ -351,6 +424,45 @@ export function checkAgainstApp(
   if (entered.status === "dns") return { verdict: "differs", note: `App recorded a race: ${seen}` };
   if (entered.status === appStatus) return { verdict: "match", note: `App saw ${appStatus.toUpperCase()}` };
   return { verdict: "differs", note: `App saw ${appStatus === "finished" ? seen : appStatus.toUpperCase()}` };
+}
+
+/**
+ * What the app recorded, as a results grid ready to save: the places it saw
+ * turned into a running order for the league's own drivers, each class
+ * numbered within itself, and any row already on file that the app didn't see
+ * carried over untouched.
+ *
+ * Returns how many drivers it filled from and how many it had nothing for, so
+ * the page can say which part of the grid still needs a human.
+ */
+export async function rowsFromAppForEvent(
+  event: LeagueEvent,
+  entries: Entry[],
+): Promise<{ rows: ResultRow[]; filled: number; unmatched: number }> {
+  const userIds = entries.map((e) => e.userId);
+  const [appRecords, onFile] = await Promise.all([
+    getAppRecordsForEvent(event, userIds),
+    getEventResults(event.id),
+  ]);
+  const finishes: AppFinish[] = [];
+  for (const userId of userIds) {
+    const rec = appRecords.get(userId);
+    if (!rec) continue;
+    finishes.push({
+      userId,
+      place: rec.place,
+      // 2 retired, 3 was disqualified. 0 means the app saved the race while it
+      // was still running, which reads as a finish to fill in and check by eye.
+      finished: rec.finishStatus !== 2 && rec.finishStatus !== 3,
+      disqualified: rec.finishStatus === 3,
+      carClass: scoringClass(carClass(rec.car)),
+    });
+  }
+  const rows = rowsFromAppFinish(
+    finishes,
+    onFile.map((r) => ({ ...r, status: r.status as ResultStatus })),
+  );
+  return { rows, filled: finishes.length, unmatched: userIds.length - finishes.length };
 }
 
 // ------------------------------------------------------------- calendar sync

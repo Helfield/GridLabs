@@ -140,6 +140,12 @@ export const leagues = pgTable("leagues", {
   poleBonus: integer("pole_bonus").notNull().default(0),
   // For a classified finisher outside the table, and for a DNF.
   participationPoints: integer("participation_points").notNull().default(0),
+  // Who may register, as the two ends of LICENCE_BANDS. Both null means anyone.
+  // A band window rather than a fixed division name so a third tier is data,
+  // not a migration. Stored as the band text because that's what registration
+  // records; see qualifies() in db/league.ts for how a driver is placed in it.
+  bandMin: text("band_min"),
+  bandMax: text("band_max"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -178,6 +184,13 @@ export const leagueResults = pgTable(
     eventId: integer("event_id").notNull().references(() => leagueEvents.id),
     userId: integer("user_id").notNull().references(() => users.id),
     position: integer("position"),
+    // A mixed-class race scores on the class result, not the overall one: in a
+    // field with LMP2s and GT3s the overall points would go to LMP2 every
+    // round. carClass is a scoring name from src/classes.ts ("LMP2", "GT3"),
+    // already normalized, so LMP2 and LMP2 (ELMS) score in one class. Both
+    // null on a single-class league, where position carries the points.
+    carClass: text("car_class"),
+    classPosition: integer("class_position"),
     status: text("status").notNull().default("finished"), // finished | dnf | dns | dsq
     fastestLap: boolean("fastest_lap").notNull().default(false),
     pole: boolean("pole").notNull().default(false),

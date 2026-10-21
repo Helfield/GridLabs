@@ -65,6 +65,10 @@ export async function ensureSchema(): Promise<void> {
 	"created_by" integer REFERENCES "users"("id"),
 	"created_at" timestamp DEFAULT now() NOT NULL
 )`);
+  // Who may register, as the two ends of LICENCE_BANDS. Both null leaves the
+  // league open to everyone, which is what every league here is today.
+  await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "band_min" text`);
+  await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "band_max" text`);
   await db.execute(sql`CREATE TABLE IF NOT EXISTS "league_entries" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"league_id" integer NOT NULL REFERENCES "leagues"("id"),
@@ -97,6 +101,11 @@ export async function ensureSchema(): Promise<void> {
 	"updated_at" timestamp DEFAULT now() NOT NULL
 )`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "league_results_event_user_idx" ON "league_results" ("event_id","user_id")`);
+  // A mixed-class race scores on the class result. Both null on a single-class
+  // league, where "position" carries the points, so nothing already entered
+  // changes when these land.
+  await db.execute(sql`ALTER TABLE "league_results" ADD COLUMN IF NOT EXISTS "car_class" text`);
+  await db.execute(sql`ALTER TABLE "league_results" ADD COLUMN IF NOT EXISTS "class_position" integer`);
   // League registration records LMU licence bands now instead of the numeric SR/DR
   // ratings that were only ever displayed (drizzle/0009). Additive: the old
   // sr_rating/dr_rating columns are simply no longer read, the way car_number was.

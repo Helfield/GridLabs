@@ -8,18 +8,18 @@ import { users, leagues, leagueEntries, leagueEvents, leagueResults } from "../d
 import { getUserById } from "../db/queries";
 import {
   isStaff,
-  LICENCE_BANDS,
   listLeagues,
   getLeague,
   getEntries,
   getEvents,
   getEvent,
   getEventResults,
-  getStandings,
+  getStandingBoards,
   isRegistered,
   saveEventResults,
   recalculateLeague,
   getAppRecordsForEvent,
+  rowsFromAppForEvent,
   parsePointsTable,
   syncLeagueEventToCalendars,
   removeLeagueEventFromCalendars,
@@ -27,6 +27,8 @@ import {
   RESULT_STATUSES,
   type ResultStatus,
 } from "../db/league";
+import { LICENCE_BANDS, qualifies, notQualifiedMessage, type ResultRow } from "../leagueRules";
+import { SCORING_CLASSES } from "../classes";
 import { calendarEnabled, authorizeUrl, exchangeCode } from "../googleCalendar";
 import { leagueIndexPage, leaguePage, eventPage, staffPage } from "../views/league-pages";
 
@@ -70,6 +72,17 @@ function bandField(v: unknown): string | null {
   return LICENCE_BANDS.includes(band) ? band : null;
 }
 
+/**
+ * A scoring class from the results form. Checked against SCORING_CLASSES
+ * rather than the shorter list the dropdown offers, so a result stored under
+ * a class this season isn't running can't be lost just by editing something
+ * else on that row.
+ */
+function classField(v: unknown): string | null {
+  const cls = typeof v === "string" ? v.trim() : "";
+  return SCORING_CLASSES.includes(cls) ? cls : null;
+}
+
 /** A datetime-local value ("2026-10-17T19:30"), read as UTC. Null if blank or invalid. */
 function parseEventDate(v: unknown): Date | null {
   if (typeof v !== "string" || !v) return null;
@@ -98,9 +111,21 @@ leagueRoutes.post("/new", async (c) => {
   const body = await c.req.parseBody();
   const name = textField(body.name, 80);
   if (!name) return c.redirect(back("/league", "msg", "A league needs a name."));
+  // A one-sided window is allowed: bandMax alone means "up to here, anyone
+  // below", bandMin alone means "from here up". No window at all is open.
+  const bandMin = bandField(body.bandMin);
+  const bandMax = bandField(body.bandMax);
+  if (bandMin && bandMax && LICENCE_BANDS.indexOf(bandMin) > LICENCE_BANDS.indexOf(bandMax))
+    return c.redirect(back("/league", "error", "The lowest band in a league has to be below the highest one."));
   const [created] = await db
     .insert(leagues)
-    .values({ name, description: textField(body.description, 1000) || null, createdBy: user.id })
+    .values({
+      name,
+      description: textField(body.description, 1000) || null,
+      bandMin,
+      bandMax,
+      createdBy: user.id,
+    })
     .returning({ id: leagues.id });
   return c.redirect(`/league/${created.id}`);
 });
@@ -164,15 +189,18 @@ leagueRoutes.post("/event/:eventId/results", async (c) => {
 
   const body = await c.req.parseBody();
   const entries = await getEntries(league.id);
-  const rows: Parameters<typeof saveEventResults>[3] = [];
+  const rows: ResultRow[] = [];
   for (const e of entries) {
     const status = body[`status_${e.userId}`];
     if (typeof status !== "string" || !RESULT_STATUSES.includes(status as ResultStatus)) continue; // blank = not in this race
     const pos = Number(body[`pos_${e.userId}`]);
+    const classPos = Number(body[`classpos_${e.userId}`]);
     rows.push({
       userId: e.userId,
       status: status as ResultStatus,
       position: Number.isInteger(pos) && pos > 0 ? pos : null,
+      carClass: classField(body[`class_${e.userId}`]),
+      classPosition: Number.isInteger(classPos) && classPos > 0 ? classPos : null,
       pole: body[`pole_${e.userId}`] === "1",
       fastestLap: body[`fl_${e.userId}`] === "1",
       adjustment: intField(body[`adj_${e.userId}`], 0, -50, 50),
@@ -182,6 +210,42 @@ leagueRoutes.post("/event/:eventId/results", async (c) => {
   const error = await saveEventResults(league, event.id, user.id, rows);
   const path = `/league/event/${event.id}`;
   return c.redirect(error ? back(path, "error", error) : back(path, "msg", "Results saved."));
+});
+
+/**
+ * Fill the results from what the drivers' desktop apps recorded and save them,
+ * leaving the grid on screen for the organiser to check and correct.
+ *
+ * Saving rather than previewing: the grid is rendered from the database, so
+ * there's nowhere to put a preview without inventing somewhere to keep it. The
+ * save is safe to check over, because pole, fastest lap and any penalty carry
+ * across from the row that was there and a driver the app didn't see keeps
+ * their row untouched.
+ */
+leagueRoutes.post("/event/:eventId/fill-from-app", async (c) => {
+  const user = await staffUser(c);
+  if (!user) return c.text("Not found.", 404);
+  const event = await getEvent(Number(c.req.param("eventId")));
+  if (!event) return c.text("Event not found.", 404);
+  const league = await getLeague(event.leagueId);
+  if (!league) return c.text("League not found.", 404);
+  const entries = await getEntries(league.id);
+  const path = `/league/event/${event.id}`;
+
+  const { rows, filled, unmatched } = await rowsFromAppForEvent(event, entries);
+  if (!filled)
+    return c.redirect(
+      back(path, "error", "No race recorded by the app matches this event's track and date, so there's nothing to fill from."),
+    );
+  const error = await saveEventResults(league, event.id, user.id, rows);
+  if (error) return c.redirect(back(path, "error", `${error} The app's places were not saved.`));
+  return c.redirect(
+    back(
+      path,
+      "msg",
+      `Filled ${filled} driver${filled === 1 ? "" : "s"} from the app, ${unmatched} with no app data left as they were. Check the places are the race you ran, then save any corrections.`,
+    ),
+  );
 });
 
 leagueRoutes.post("/event/:eventId/edit", async (c) => {
@@ -278,13 +342,13 @@ leagueRoutes.get("/:id", async (c) => {
     getEvents(league.id),
     isRegistered(league.id, user.id),
   ]);
-  const standings = await getStandings(league.id, events);
+  const boards = await getStandingBoards(league.id, events);
   return c.html(
     leaguePage(user, {
       league,
       entries,
       events,
-      standings,
+      boards,
       registered,
       calendarOn: calendarEnabled(),
       calendarConnected: Boolean(user.googleRefreshToken),
@@ -303,14 +367,21 @@ leagueRoutes.post("/:id/register", async (c) => {
   if (!league) return c.text("League not found.", 404);
   if (!league.registrationOpen) return c.redirect(back(`/league/${id}`, "error", "Registration is closed."));
   const body = await c.req.parseBody();
+  const srBand = bandField(body.srBand);
+  const drBand = bandField(body.drBand);
+  // The band is taken as declared. This gate catches the honest mistakes and
+  // the people who registered for the wrong league, not someone who types a
+  // Gold band they don't hold; nothing here can see into LMU's licence file.
+  if (!qualifies(league, { srBand, drBand }))
+    return c.redirect(back(`/league/${id}`, "error", notQualifiedMessage(league)));
   await db
     .insert(leagueEntries)
     .values({
       leagueId: id,
       userId: user.id,
       team: textField(body.team, 60) || null,
-      srBand: bandField(body.srBand),
-      drBand: bandField(body.drBand),
+      srBand,
+      drBand,
     })
     .onConflictDoNothing();
   return c.redirect(back(`/league/${id}`, "msg", "You're registered."));
@@ -360,8 +431,35 @@ leagueRoutes.post("/:id/add-driver", async (c) => {
     ? await db.query.users.findFirst({ where: eq(users.discordUsername, username), columns: { id: true, name: true } })
     : undefined;
   if (!member) return c.redirect(back(`/league/${id}`, "error", `No member with the Discord username "${username}" has signed in yet.`));
-  await db.insert(leagueEntries).values({ leagueId: id, userId: member.id }).onConflictDoNothing();
+  await db
+    .insert(leagueEntries)
+    .values({ leagueId: id, userId: member.id, srBand: bandField(body.srBand), drBand: bandField(body.drBand) })
+    .onConflictDoNothing();
   return c.redirect(back(`/league/${id}`, "msg", `${member.name} added.`));
+});
+
+/**
+ * Record or correct a driver's licence bands, by staff.
+ *
+ * Deliberately not checked against the league's window: a moderator putting a
+ * band on someone is the exemption route, whether that's a driver who didn't
+ * register themselves, a band typed wrong at registration, or a Silver kept in
+ * the top division because that's where the racing suits them.
+ */
+leagueRoutes.post("/:id/set-bands/:userId", async (c) => {
+  const user = await staffUser(c);
+  if (!user) return c.text("Not found.", 404);
+  const id = Number(c.req.param("id"));
+  const userId = Number(c.req.param("userId"));
+  const body = await c.req.parseBody();
+  const [updated] = await db
+    .update(leagueEntries)
+    .set({ srBand: bandField(body.srBand), drBand: bandField(body.drBand) })
+    .where(and(eq(leagueEntries.leagueId, id), eq(leagueEntries.userId, userId)))
+    .returning({ id: leagueEntries.id });
+  return c.redirect(
+    back(`/league/${id}`, updated ? "msg" : "error", updated ? "Licence bands saved." : "That driver isn't registered here."),
+  );
 });
 
 leagueRoutes.post("/:id/remove/:userId", async (c) => {
@@ -375,7 +473,7 @@ leagueRoutes.post("/:id/remove/:userId", async (c) => {
 });
 
 leagueRoutes.post("/:id/settings", async (c) => {
-  const user = await coachUser(c);
+  const user = await staffUser(c);
   if (!user) return c.text("Not found.", 404);
   const id = Number(c.req.param("id"));
   const league = await getLeague(id);
@@ -385,6 +483,10 @@ leagueRoutes.post("/:id/settings", async (c) => {
   const pointsTable = parsePointsTable(textField(body.pointsTable, 200));
   if (!name) return c.redirect(back(`/league/${id}`, "error", "A league needs a name."));
   if (pointsTable.length === 0) return c.redirect(back(`/league/${id}`, "error", "Enter the points for at least 1st place, e.g. 25,18,15."));
+  const bandMin = bandField(body.bandMin);
+  const bandMax = bandField(body.bandMax);
+  if (bandMin && bandMax && LICENCE_BANDS.indexOf(bandMin) > LICENCE_BANDS.indexOf(bandMax))
+    return c.redirect(back(`/league/${id}`, "error", "The lowest band in a league has to be below the highest one."));
 
   await db
     .update(leagues)
@@ -396,6 +498,8 @@ leagueRoutes.post("/:id/settings", async (c) => {
       poleBonus: intField(body.poleBonus, 0, 0, 20),
       participationPoints: intField(body.participationPoints, 0, 0, 20),
       registrationOpen: body.registrationOpen === "1",
+      bandMin,
+      bandMax,
     })
     .where(eq(leagues.id, id));
   // The rules may have changed, so every stored result is re-scored.

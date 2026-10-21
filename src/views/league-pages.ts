@@ -1,7 +1,9 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
 import { shortDate, lapTime } from "./components";
-import type { League, LeagueEvent, Entry, EventResult, StandingRow, AppRaceRecord, CheckVerdict } from "../db/league";
-import { checkAgainstApp, parsePointsTable, LICENCE_BANDS } from "../db/league";
+import type { League, LeagueEvent, Entry, EventResult, StandingBoard, AppRaceRecord, CheckVerdict } from "../db/league";
+import { checkAgainstApp, parsePointsTable } from "../db/league";
+import { LICENCE_BANDS, bandWindowText, MIN_CLASS_SIZE } from "../leagueRules";
+import { LEAGUE_CLASSES } from "../classes";
 
 type Nav = NonNullable<NavUser>;
 
@@ -19,10 +21,32 @@ function dateInputValue(d: Date | null | undefined): string {
   return d ? d.toISOString().slice(0, 16) : "";
 }
 
-/** A registration dropdown of the LMU licence bands. Blank means the driver left it out. */
-function bandSelect(name: string, label: string): string {
-  const options = [`<option value="">Not given</option>`, ...LICENCE_BANDS.map((b) => `<option value="${b}">${b}</option>`)];
-  return `<label class="field"><span class="field__label">${label}</span><select name="${name}">${options.join("")}</select></label>`;
+function bandOptions(selected?: string | null, blankLabel = "Not given"): string {
+  return [
+    `<option value=""${!selected ? " selected" : ""}>${blankLabel}</option>`,
+    ...LICENCE_BANDS.map((b) => `<option value="${b}"${selected === b ? " selected" : ""}>${b}</option>`),
+  ].join("");
+}
+
+/**
+ * A dropdown of the LMU licence bands. Blank means the driver left it out, or
+ * for a league's window that anyone may register.
+ */
+function bandSelect(name: string, label: string, selected?: string | null, blankLabel = "Not given"): string {
+  return `<label class="field"><span class="field__label">${label}</span><select name="${name}">${bandOptions(selected, blankLabel)}</select></label>`;
+}
+
+const ANYONE = "Anyone";
+
+/**
+ * A dropdown of the car classes a league scores. Unioned with whatever is
+ * already stored, so editing a row never silently drops a class the current
+ * season isn't running.
+ */
+function classSelect(name: string, selected: string | null): string {
+  const choices = selected && !LEAGUE_CLASSES.includes(selected) ? [selected, ...LEAGUE_CLASSES] : LEAGUE_CLASSES;
+  const options = [`<option value=""${!selected ? " selected" : ""}>—</option>`, ...choices.map((cl) => `<option value="${cl}"${selected === cl ? " selected" : ""}>${cl}</option>`)];
+  return `<select name="${name}" style="background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:6px">${options.join("")}</select>`;
 }
 
 function dateTimeUtc(d: Date | null | undefined): string {
@@ -60,7 +84,7 @@ export function leagueIndexPage(
       </div>
       <div class="panel__body">
         ${l.description ? `<p style="margin:0 0 10px;color:var(--muted)">${escapeHtml(l.description)}</p>` : ""}
-        <span style="color:var(--dim);font-size:13px">${l.entryCount} ${l.entryCount === 1 ? "driver" : "drivers"} registered</span>
+        <span style="color:var(--dim);font-size:13px">${l.entryCount} ${l.entryCount === 1 ? "driver" : "drivers"} registered${bandWindowText(l) ? ` · ${bandWindowText(l)}` : ""}</span>
       </div>
     </a>`,
           )
@@ -76,8 +100,10 @@ export function leagueIndexPage(
         <input type="text" name="name" required maxlength="80" placeholder="e.g. IRP Endurance Series — Season 1"></label>
       <label class="field"><span class="field__label">Description (optional)</span>
         <textarea name="description" rows="3" maxlength="1000"></textarea></label>
+      ${bandSelect("bandMin", "Lowest band that may register", null, ANYONE)}
+      ${bandSelect("bandMax", "Highest band that may register", null, ANYONE)}
       <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Create league</button>
-      <p class="hint">Points rules are set on the league's page after it's created; the default is the usual 25-18-15-12-10-8-6-4-2-1.</p>
+      <p class="hint">The two bands are who the league is open to, from the LMU licence list. A division of everyone below Gold is a window from Bronze 1 to Silver 3. Leave both on Anyone to run an open league. Points rules are set on the league's page after it's created; the default is the usual 25-18-15-12-10-8-6-4-2-1.</p>
     </form>
   </div>
 </section>`
@@ -106,7 +132,7 @@ export function leaguePage(
     league: League;
     entries: Entry[];
     events: LeagueEvent[];
-    standings: StandingRow[];
+    boards: StandingBoard[];
     registered: boolean;
     calendarOn: boolean;
     calendarConnected: boolean;
@@ -115,8 +141,9 @@ export function leaguePage(
     error?: string | null;
   },
 ): string {
-  const { league, entries, events, standings, registered } = ctx;
+  const { league, entries, events, boards, registered } = ctx;
   const staff = isStaff(user);
+  const window = bandWindowText(league);
 
   // Google Calendar connect/disconnect, shown once the site has Google
   // credentials configured. Connecting lets every race you're registered for
@@ -162,30 +189,31 @@ export function leaguePage(
     <form action="/league/${league.id}/register" method="post">
       <label class="field"><span class="field__label">Team name (optional)</span>
         <input type="text" name="team" maxlength="60" autocomplete="off"></label>
-      ${bandSelect("srBand", "Safety Rating band (optional)")}
-      ${bandSelect("drBand", "Driver Rating band (optional)")}
+      ${window ? `<p style="margin:0 0 14px;color:var(--muted)">This league is open to <strong style="color:var(--text)">${escapeHtml(window)}</strong>. Both bands are taken from your LMU licence screen, Safety Rating and Driver Rating, and the league places you by the lower of the two.</p>` : ""}
+      ${bandSelect("srBand", `Safety Rating band${window ? "" : " (optional)"}`)}
+      ${bandSelect("drBand", `Driver Rating band${window ? "" : " (optional)"}`)}
       <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Register for ${escapeHtml(league.name)}</button>
+      ${window ? `<p class="hint">You declare your own bands. If you think you belong in this league but don't qualify on what you've entered, ask a moderator to add you.</p>` : ""}
     </form>
   </div>
 </section>`
       : `<section class="panel" style="margin-bottom:28px"><div class="panel__body" style="color:var(--dim)">Registration is closed.</div></section>`;
 
   const eventHeaders = events.map((e) => `<th class="col-r hide-sm" title="${escapeHtml(e.name)}">R${e.round}</th>`).join("");
-  const standingsPanel =
-    standings.length === 0
-      ? `<div class="empty"><strong>No drivers yet</strong>The table fills in once people register.</div>`
-      : `
+
+  const boardTable = (rows: StandingBoard["rows"]) => `
 <table class="tower">
-  <thead><tr><th class="pos">#</th><th>Driver</th>${eventHeaders}<th class="col-r">Wins</th><th class="col-r">Pts</th></tr></thead>
+  <thead><tr><th class="pos">#</th><th>Driver</th>${eventHeaders}<th class="col-r hide-sm">Rounds</th><th class="col-r">Wins</th><th class="col-r">Pts</th></tr></thead>
   <tbody>
-  ${standings
+  ${rows
     .map(
       (s, i) => `
     <tr>
       <td class="num pos">${i + 1}</td>
       <td><div class="driver__name">${escapeHtml(s.name)}</div>
-          <div class="driver__handle">${[s.team ? escapeHtml(s.team) : "", s.srBand ? `SR ${escapeHtml(s.srBand)}` : "", s.drBand ? `DR ${escapeHtml(s.drBand)}` : ""].filter(Boolean).join(" · ")}</div></td>
+          <div class="driver__handle">${[s.team ? escapeHtml(s.team) : "", s.srBand ? `SR ${escapeHtml(s.srBand)}` : "", s.drBand ? `DR ${escapeHtml(s.drBand)}` : "", s.carClass ? escapeHtml(s.carClass) : ""].filter(Boolean).join(" · ")}</div></td>
       ${events.map((e) => `<td class="num col-r hide-sm" style="color:var(--dim)">${s.byEvent.has(e.id) ? s.byEvent.get(e.id) : "–"}</td>`).join("")}
+      <td class="num col-r hide-sm" style="color:var(--dim)">${s.rounds}</td>
       <td class="num col-r">${s.wins}</td>
       <td class="num col-r"><strong>${s.points}</strong></td>
     </tr>`,
@@ -193,6 +221,25 @@ export function leaguePage(
     .join("")}
   </tbody>
 </table>`;
+
+  // One table per class when the races are mixed-class. The single table of a
+  // class-less league keeps the heading it always had, so nothing looks new
+  // until classes are actually in use.
+  const championship =
+    entries.length === 0
+      ? `<section class="panel"><div class="panel__head"><h2>Championship</h2><span class="tag">${escapeHtml(pointsSummary(league))}</span></div><div class="empty"><strong>No drivers yet</strong>The table fills in once people register.</div></section>`
+      : boards
+          .map((b, i) => {
+            const title = b.carClass ? `${b.carClass} championship` : boards.length > 1 ? "No class recorded" : "Championship";
+            const thin = b.carClass && b.rows.length < MIN_CLASS_SIZE;
+            return `
+<section class="panel"${i ? ' style="margin-top:28px"' : ""}>
+  <div class="panel__head"><h2>${escapeHtml(title)}</h2><span class="tag">${escapeHtml(pointsSummary(league))}</span></div>
+  ${b.rows.length ? boardTable(b.rows) : `<div class="empty"><strong>No scores yet</strong>This table fills in as results are entered.</div>`}
+  ${thin ? `<div class="panel__body" style="color:var(--dim);font-size:13px">Fewer than ${MIN_CLASS_SIZE} cars in this class. As the sporting doc puts it, they merge into the next class along rather than scoring a procession.</div>` : ""}
+</section>`;
+          })
+          .join("");
 
   const calendar =
     events.length === 0
@@ -241,10 +288,18 @@ export function leaguePage(
       entries.length
         ? entries
             .map(
-              (e) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--hair)">
-        <span>${escapeHtml(e.name)} <span style="color:var(--dim)">@${escapeHtml(e.discordUsername)}${e.team ? ` · ${escapeHtml(e.team)}` : ""}${e.srBand ? ` · SR ${escapeHtml(e.srBand)}` : ""}${e.drBand ? ` · DR ${escapeHtml(e.drBand)}` : ""}</span></span>
-        <form action="/league/${league.id}/remove/${e.userId}" method="post" onsubmit="return confirm('Remove ${escapeHtml(e.name).replace(/'/g, "")} from the league?')">
-          <button class="linkbtn" type="submit" style="color:var(--warn)">Remove</button></form>
+              (e) => `<div style="padding:8px 0;border-bottom:1px solid var(--hair)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <span>${escapeHtml(e.name)} <span style="color:var(--dim)">@${escapeHtml(e.discordUsername)}${e.team ? ` · ${escapeHtml(e.team)}` : ""}</span></span>
+          <form action="/league/${league.id}/remove/${e.userId}" method="post" onsubmit="return confirm('Remove ${escapeHtml(e.name).replace(/'/g, "")} from the league?')">
+            <button class="linkbtn" type="submit" style="color:var(--warn)">Remove</button></form>
+        </div>
+        <form action="/league/${league.id}/set-bands/${e.userId}" method="post" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+          <select name="srBand" title="Safety Rating band" style="background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:5px">${bandOptions(e.srBand)}</select>
+          <select name="drBand" title="Driver Rating band" style="background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:5px">${bandOptions(e.drBand)}</select>
+          <button class="btn btn--ghost btn--sm" type="submit">Save bands</button>
+          ${window && !e.srBand && !e.drBand ? `<span style="color:var(--warn);font-size:12px">No licence recorded</span>` : ""}
+        </form>
       </div>`,
             )
             .join("")
@@ -253,22 +308,27 @@ export function leaguePage(
     <form action="/league/${league.id}/add-driver" method="post" style="margin-top:14px">
       <label class="field"><span class="field__label">Add a member by Discord username</span>
         <input type="text" name="username" required autocomplete="off" placeholder="their Discord username"></label>
+      ${bandSelect("srBand", "Safety Rating band")}
+      ${bandSelect("drBand", "Driver Rating band")}
       <button class="btn btn--ghost btn--sm" type="submit">Add driver</button>
+      <p class="hint">Adding someone here skips the band check, which is how a driver who doesn't fit the window still gets in. Fill their bands in while you're here so the standings say what they race on.</p>
     </form>
   </div>
 </section>`
     : "";
 
-  const coachPanel = isCoach(user)
+  const settingsPanel = isStaff(user)
     ? `
 <section class="panel" style="margin-top:28px">
-  <div class="panel__head"><h2>League settings</h2><span class="tag">Coach</span></div>
+  <div class="panel__head"><h2>League settings</h2><span class="tag">${escapeHtml(user.role)}</span></div>
   <div class="panel__body">
     <form action="/league/${league.id}/settings" method="post">
       <label class="field"><span class="field__label">Name</span>
         <input type="text" name="name" value="${escapeHtml(league.name)}" required maxlength="80"></label>
       <label class="field"><span class="field__label">Description</span>
         <textarea name="description" rows="3" maxlength="1000">${escapeHtml(league.description ?? "")}</textarea></label>
+      ${bandSelect("bandMin", "Lowest band that may register", league.bandMin, ANYONE)}
+      ${bandSelect("bandMax", "Highest band that may register", league.bandMax, ANYONE)}
       <label class="field"><span class="field__label">Points for 1st, 2nd, 3rd… (comma separated)</span>
         <input type="text" name="pointsTable" value="${escapeHtml(league.pointsTable)}" required></label>
       <label class="field"><span class="field__label">Fastest lap bonus</span>
@@ -281,6 +341,7 @@ export function leaguePage(
         <input type="checkbox" name="registrationOpen" value="1" ${league.registrationOpen ? "checked" : ""} style="width:auto">
         <span>Registration open</span></label>
       <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Save &amp; re-score results</button>
+      <p class="hint">Changing the bands only affects who can register from now on. Anyone already in the league stays in it, including a driver who no longer fits the window.</p>
     </form>
   </div>
 </section>`
@@ -292,23 +353,20 @@ export function leaguePage(
   <div>
     <span class="eyebrow">League</span>
     <h1>${escapeHtml(league.name)}</h1>
-    <p class="phead__sub">${entries.length} ${entries.length === 1 ? "driver" : "drivers"} · ${events.length} ${events.length === 1 ? "event" : "events"}</p>
+    <p class="phead__sub">${entries.length} ${entries.length === 1 ? "driver" : "drivers"} · ${events.length} ${events.length === 1 ? "event" : "events"}${window ? ` · open to ${escapeHtml(window)}` : ""}</p>
   </div>
 </div>
 ${league.description ? `<p style="color:var(--muted);margin:0 0 18px">${escapeHtml(league.description)}</p>` : ""}
 ${notice(ctx.msg)}${notice(ctx.error, "error")}
 ${joinPanel}
 ${calendarPanel}
-<section class="panel">
-  <div class="panel__head"><h2>Championship</h2><span class="tag">${escapeHtml(pointsSummary(league))}</span></div>
-  ${standingsPanel}
-</section>
+${championship}
 <section class="panel" style="margin-top:28px">
   <div class="panel__head"><h2>Calendar</h2><span class="tag">${events.length}</span></div>
   ${calendar}
 </section>
 ${staffPanels}
-${coachPanel}`;
+${settingsPanel}`;
   return layout(league.name, body, user, { wallpaper: "spapark" });
 }
 
@@ -349,9 +407,15 @@ export function eventPage(
   const { league, event, entries, results, appRecords } = ctx;
   const staff = isStaff(user);
   const byUser = new Map(results.map((r) => [r.userId, r]));
+  const classed = results.some((r) => r.carClass);
 
+  // Published order: the place the points came from, which is the class place
+  // in a mixed race and the overall place otherwise.
   const published = [...results].sort((a, b) => {
-    const rank = (r: EventResult) => (r.status === "finished" && r.position ? r.position : 1000);
+    const rank = (r: EventResult) => {
+      const place = r.classPosition ?? r.position;
+      return r.status === "finished" && place ? place : 1000;
+    };
     return rank(a) - rank(b) || a.name.localeCompare(b.name);
   });
   const resultsTable =
@@ -359,14 +423,15 @@ export function eventPage(
       ? `<div class="empty"><strong>No results yet</strong>They'll appear here once the organisers have entered them.</div>`
       : `
 <table class="tower">
-  <thead><tr><th class="pos">Pos</th><th>Driver</th><th class="hide-sm">Bonus</th><th class="col-r">Pts</th></tr></thead>
+  <thead><tr><th class="pos">${classed ? "Cls" : "Pos"}</th><th>Driver</th>${classed ? `<th class="hide-sm">Overall</th>` : ""}<th class="hide-sm">Bonus</th><th class="col-r">Pts</th></tr></thead>
   <tbody>
   ${published
     .map(
       (r) => `
     <tr>
-      <td class="num pos">${r.status === "finished" ? r.position : r.status.toUpperCase()}</td>
-      <td>${escapeHtml(r.name)}</td>
+      <td class="num pos">${r.status === "finished" ? (r.classPosition ?? r.position) : r.status.toUpperCase()}</td>
+      <td><div class="driver__name">${escapeHtml(r.name)}</div>${r.carClass ? `<div class="driver__handle">${escapeHtml(r.carClass)}</div>` : ""}</td>
+      ${classed ? `<td class="hide-sm" style="color:var(--dim)">${r.status === "finished" && r.position ? `P${r.position}` : "–"}</td>` : ""}
       <td class="hide-sm" style="color:var(--dim)">${[r.pole ? "Pole" : "", r.fastestLap ? "Fastest lap" : "", r.adjustment ? `${r.adjustment > 0 ? "+" : ""}${r.adjustment} adj.` : ""].filter(Boolean).join(" · ")}</td>
       <td class="num col-r"><strong>${r.points}</strong></td>
     </tr>`,
@@ -380,11 +445,15 @@ export function eventPage(
 <section class="panel" style="margin-top:28px">
   <div class="panel__head"><h2>Enter results</h2><span class="tag">${escapeHtml(user.role)}</span></div>
   <div class="panel__body">
-    <p class="hint" style="margin-top:0">One row per registered driver. Leave the status blank for anyone who wasn't in this race. Points are worked out from the league's rules when you save. The last column is what the desktop app recorded for that driver — it's a check, nothing is filled in from it.</p>
+    <form action="/league/event/${event.id}/fill-from-app" method="post" style="margin-bottom:14px">
+      <button class="btn btn--ghost btn--sm" type="submit">Fill from the app</button>
+      <span style="color:var(--dim);font-size:13px;margin-left:10px">Use what each driver's app recorded as the starting point.</span>
+    </form>
+    <p class="hint" style="margin-top:0">One row per registered driver. Leave the status blank for anyone who wasn't in this race, and their row is removed when you save. Points come from the league's rules: the class place when the race carries classes, the overall place when it doesn't. Set a class on one row and every finisher then needs one, because a table that scored half the grid on class places and half on overall places wouldn't mean anything. The last column is what the desktop app recorded, as a check.</p>
     <form action="/league/event/${event.id}/results" method="post">
       <div style="overflow-x:auto">
       <table class="tower">
-        <thead><tr><th>Driver</th><th>Status</th><th>Pos</th><th>Pole</th><th>FL</th><th>Adj.</th><th>App check</th></tr></thead>
+        <thead><tr><th>Driver</th><th>Status</th><th>Pos</th><th>Class</th><th>Cls pos</th><th>Pole</th><th>FL</th><th>Adj.</th><th>App check</th></tr></thead>
         <tbody>
         ${entries
           .map((e) => {
@@ -403,6 +472,8 @@ export function eventPage(
             ${["finished", "dnf", "dns", "dsq"].map((s) => `<option value="${s}" ${r?.status === s ? "selected" : ""}>${s.toUpperCase()}</option>`).join("")}
           </select></td>
           <td><input type="number" name="pos_${e.userId}" min="1" max="200" value="${r?.position ?? ""}" style="width:64px;background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:6px"></td>
+          <td>${classSelect(`class_${e.userId}`, r?.carClass ?? null)}</td>
+          <td><input type="number" name="classpos_${e.userId}" min="1" max="200" value="${r?.classPosition ?? ""}" style="width:64px;background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:6px"></td>
           <td><input type="checkbox" name="pole_${e.userId}" value="1" ${r?.pole ? "checked" : ""}></td>
           <td><input type="checkbox" name="fl_${e.userId}" value="1" ${r?.fastestLap ? "checked" : ""}></td>
           <td><input type="number" name="adj_${e.userId}" min="-50" max="50" value="${r?.adjustment || ""}" style="width:64px;background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:6px"></td>
@@ -482,7 +553,7 @@ export function staffPage(
   <div>
     <span class="eyebrow">Coach</span>
     <h1>League staff</h1>
-    <p class="phead__sub">Moderators can add events, enter results and manage entries. Only coaches can change a league's points rules, delete things or choose moderators.</p>
+    <p class="phead__sub">Moderators can add events, enter results, manage entries and change a league's points rules, including its licence bands. Only coaches can delete things, edit event details or choose moderators.</p>
   </div>
 </div>
 ${notice(msg)}
