@@ -30,11 +30,14 @@ export async function findRoleFor(messageId: string, emoji: string): Promise<str
  * The other choices this message hands out. One message is treated as one
  * choice, so a member who clicks a second emoji is moved rather than added to:
  * see onReaction in gateway.ts, which takes these roles off and clears the
- * member's own reaction for them.
+ * member's own reaction for them. The names are only for the log line.
  */
-export async function otherChoicesOnMessage(messageId: string, roleId: string): Promise<{ emoji: string; roleId: string }[]> {
+export async function otherChoicesOnMessage(
+  messageId: string,
+  roleId: string,
+): Promise<{ emoji: string; roleId: string; roleName: string | null }[]> {
   const rows = await db
-    .select({ emoji: reactionRoles.emoji, roleId: reactionRoles.roleId })
+    .select({ emoji: reactionRoles.emoji, roleId: reactionRoles.roleId, roleName: reactionRoles.roleName })
     .from(reactionRoles)
     .where(eq(reactionRoles.messageId, messageId));
   return rows.filter((r) => r.roleId !== roleId);

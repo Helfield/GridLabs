@@ -1,4 +1,4 @@
-import { botEnabled, guildId } from "./bot-api";
+import { botEnabled, DiscordApiError, guildId } from "./bot-api";
 import { findRoleFor, giveRole, memberRoleIds, otherChoicesOnMessage, removeMemberReaction, takeRole } from "./reaction-roles";
 import { onGuildCreate, onVoiceState, type VoiceState } from "./voice";
 
@@ -192,12 +192,39 @@ async function onReaction(e: ReactionEvent, added: boolean): Promise<void> {
   // take the others off, so a failure here can never leave them with no band.
   const others = await otherChoicesOnMessage(e.message_id, roleId);
   if (others.length === 0) return;
-  const held = e.member?.roles ?? (await memberRoleIds(e.user_id));
+  // The event's member object is the cheap way to learn what to take back off,
+  // but it is a partial object: an empty list is treated as unknown and asked
+  // for over REST, because believing one is how the sweep quietly does nothing
+  // and the member keeps two bands.
+  let held = e.member?.roles ?? [];
+  if (held.length === 0) held = await memberRoleIds(e.user_id).catch(() => []);
+  let cleared = 0;
+  const problems: string[] = [];
   for (const other of others) {
     if (!held.includes(other.roleId)) continue;
-    await takeRole(e.user_id, other.roleId).catch(() => {});
-    await removeMemberReaction(e.channel_id, e.message_id, other.emoji, e.user_id).catch((err) =>
-      console.error(`Reaction role: could not clear the old click on ${other.emoji}. The bot needs MANAGE_MESSAGES in that channel.`, err),
-    );
+    try {
+      await takeRole(e.user_id, other.roleId);
+    } catch (err) {
+      problems.push(`removing ${other.roleName ?? other.roleId} failed: ${why(err)}`);
+    }
+    try {
+      await removeMemberReaction(e.channel_id, e.message_id, other.emoji, e.user_id);
+      cleared++;
+    } catch (err) {
+      // 404 means there was no click of theirs to clear, which is not a problem.
+      if (!(err instanceof DiscordApiError) || err.status !== 404) problems.push(`clearing ${other.emoji} failed: ${why(err)}`);
+    }
   }
+  const line = `Discord: ${e.user_id} chose role ${roleId} on message ${e.message_id}, ${cleared} old click(s) cleared`;
+  if (problems.length) console.error(`${line}. ${problems.join(" | ")}`);
+  else console.log(line);
+}
+
+/** Discord's own words, trimmed to one line, with the permission named when it said no. */
+function why(err: unknown): string {
+  if (err instanceof DiscordApiError) {
+    const hint = err.status === 403 ? " (the bot role needs Manage Roles, plus Manage Messages to clear a click)" : "";
+    return `${err.status}${hint} ${err.body.slice(0, 140)}`;
+  }
+  return String(err);
 }
