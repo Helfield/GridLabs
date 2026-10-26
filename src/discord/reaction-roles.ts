@@ -27,13 +27,17 @@ export async function findRoleFor(messageId: string, emoji: string): Promise<str
 }
 
 /**
- * The other roles this message hands out. One message is treated as one
+ * The other choices this message hands out. One message is treated as one
  * choice, so a member who clicks a second emoji is moved rather than added to:
- * see onReaction in gateway.ts for where these get taken back off.
+ * see onReaction in gateway.ts, which takes these roles off and clears the
+ * member's own reaction for them.
  */
-export async function otherRolesOnMessage(messageId: string, roleId: string): Promise<string[]> {
-  const rows = await db.select({ roleId: reactionRoles.roleId }).from(reactionRoles).where(eq(reactionRoles.messageId, messageId));
-  return [...new Set(rows.map((r) => r.roleId))].filter((id) => id !== roleId);
+export async function otherChoicesOnMessage(messageId: string, roleId: string): Promise<{ emoji: string; roleId: string }[]> {
+  const rows = await db
+    .select({ emoji: reactionRoles.emoji, roleId: reactionRoles.roleId })
+    .from(reactionRoles)
+    .where(eq(reactionRoles.messageId, messageId));
+  return rows.filter((r) => r.roleId !== roleId);
 }
 
 /** Role ids a member holds, for the reactions whose event didn't carry them. */
@@ -95,6 +99,16 @@ async function removeBotReaction(channelId: string, messageId: string, emoji: st
   await botFetch("DELETE", `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`).catch(
     () => {},
   );
+}
+
+/**
+ * Takes one member's reaction off a message. This is what lets a picker be used
+ * again: Discord leaves an earlier click highlighted, so a driver who moved from
+ * Bronze 3 to Silver 2 still saw Bronze 3 lit up and took that for "the panel
+ * only works once". Needs MANAGE_MESSAGES in that channel.
+ */
+export async function removeMemberReaction(channelId: string, messageId: string, emoji: string, userId: string): Promise<void> {
+  await botFetch("DELETE", `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/${userId}`);
 }
 
 export async function getPanel(messageId: string) {

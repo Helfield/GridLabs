@@ -1,12 +1,13 @@
 import { botEnabled, guildId } from "./bot-api";
-import { findRoleFor, giveRole, memberRoleIds, otherRolesOnMessage, takeRole } from "./reaction-roles";
+import { findRoleFor, giveRole, memberRoleIds, otherChoicesOnMessage, removeMemberReaction, takeRole } from "./reaction-roles";
 import { onGuildCreate, onVoiceState, type VoiceState } from "./voice";
 
 /**
  * The bot's live connection to Discord, used for reaction roles: when a member
  * adds (or removes) a reaction on a message set up in /coach/discord, they get
  * (or lose) the matching role. One message is one choice, so adding a second
- * reaction moves them rather than stacking another role on top.
+ * reaction moves them rather than stacking another role on top, and the click
+ * they made earlier is taken off the message for them.
  *
  * It also drives join-to-create voice channels (voice.ts).
  *
@@ -26,6 +27,7 @@ type Payload = { op: number; d: any; s: number | null; t: string | null };
 type ReactionEvent = {
   user_id: string;
   guild_id?: string;
+  channel_id: string;
   message_id: string;
   emoji: { id: string | null; name: string | null };
   // Discord sends the member with a reaction event, but the field is optional,
@@ -176,20 +178,26 @@ async function onReaction(e: ReactionEvent, added: boolean): Promise<void> {
   const roleId = await findRoleFor(e.message_id, emoji);
   if (!roleId) return;
   if (!added) {
-    await takeRole(e.user_id, roleId);
+    // Un-clicking takes the role away again. A member can land here for a
+    // reaction this handler already cleared, holding nothing to lose, so the
+    // failure is not worth logging.
+    await takeRole(e.user_id, roleId).catch(() => {});
     return;
   }
   await giveRole(e.user_id, roleId);
   // One message is one choice. Discord leaves the earlier reaction in place
   // when a member clicks a different emoji, so without this a driver moving
-  // from Bronze 3 to Silver 2 keeps both roles and the picker reads as though
-  // it only worked the first time. Grant first, then take the others off, so a
-  // failure here can never leave them with no band at all.
-  const others = await otherRolesOnMessage(e.message_id, roleId);
+  // from Bronze 3 to Silver 2 keeps both roles and the lit-up Bronze 3 makes
+  // the picker read as though it only worked the first time. Grant first, then
+  // take the others off, so a failure here can never leave them with no band.
+  const others = await otherChoicesOnMessage(e.message_id, roleId);
   if (others.length === 0) return;
   const held = e.member?.roles ?? (await memberRoleIds(e.user_id));
   for (const other of others) {
-    if (!held.includes(other)) continue;
-    await takeRole(e.user_id, other).catch(() => {});
+    if (!held.includes(other.roleId)) continue;
+    await takeRole(e.user_id, other.roleId).catch(() => {});
+    await removeMemberReaction(e.channel_id, e.message_id, other.emoji, e.user_id).catch((err) =>
+      console.error(`Reaction role: could not clear the old click on ${other.emoji}. The bot needs MANAGE_MESSAGES in that channel.`, err),
+    );
   }
 }
