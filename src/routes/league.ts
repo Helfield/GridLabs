@@ -4,7 +4,7 @@ import { eq, and, inArray, max } from "drizzle-orm";
 import type { AppVariables } from "../index";
 import { requireAuth } from "./auth";
 import { db } from "../db/client";
-import { users, leagues, leagueEntries, leagueEvents, leagueResults } from "../db/schema";
+import { users, leagues, leagueEntries, leagueEvents, leagueResults, leagueAvailability } from "../db/schema";
 import { getUserById } from "../db/queries";
 import {
   isStaff,
@@ -14,6 +14,9 @@ import {
   getEvents,
   getEvent,
   getEventResults,
+  getAttendance,
+  getAttendanceForEvents,
+  setAttendance,
   getStandingBoards,
   isRegistered,
   saveEventResults,
@@ -27,7 +30,17 @@ import {
   RESULT_STATUSES,
   type ResultStatus,
 } from "../db/league";
-import { LICENCE_BANDS, qualifies, notQualifiedMessage, type ResultRow } from "../leagueRules";
+import {
+  LICENCE_BANDS,
+  qualifies,
+  notQualifiedMessage,
+  ATTENDANCE_STATUSES,
+  countAttendance,
+  rsvpOpen,
+  type AttendanceCounts,
+  type AttendanceStatus,
+  type ResultRow,
+} from "../leagueRules";
 import { SCORING_CLASSES } from "../classes";
 import { calendarEnabled, authorizeUrl, exchangeCode } from "../googleCalendar";
 import { leagueIndexPage, leaguePage, eventPage, staffPage } from "../views/league-pages";
@@ -171,11 +184,63 @@ leagueRoutes.get("/event/:eventId", async (c) => {
   if (!league) return c.text("League not found.", 404);
   const entries = await getEntries(league.id);
   const results = await getEventResults(event.id);
+  const [attendance, registered] = await Promise.all([getAttendance(event.id), isRegistered(league.id, user.id)]);
+  const myAttendance = registered ? attendance.find((a) => a.userId === user.id)?.status ?? null : null;
   // The app cross-check is for the organisers only -- it names drivers who
   // might simply not have the app, so it isn't shown to everyone.
   const appRecords = isStaff(user.role) ? await getAppRecordsForEvent(event, entries.map((e) => e.userId)) : new Map();
   return c.html(
-    eventPage(user, { league, event, entries, results, appRecords, msg: c.req.query("msg"), error: c.req.query("error") }),
+    eventPage(user, {
+      league,
+      event,
+      entries,
+      results,
+      attendance,
+      appRecords,
+      registered,
+      myAttendance,
+      now: new Date(),
+      msg: c.req.query("msg"),
+      error: c.req.query("error"),
+    }),
+  );
+});
+
+/**
+ * Say whether you're racing this round. A driver marks themselves until the
+ * league's deadline; after it only a moderator can change it, which is the
+ * point -- the organiser is the one who has to make a field out of the answers.
+ */
+leagueRoutes.post("/event/:eventId/rsvp", async (c) => {
+  const user = await currentUser(c);
+  if (!user) return c.redirect("/login");
+  const event = await getEvent(Number(c.req.param("eventId")));
+  if (!event) return c.text("Event not found.", 404);
+  const league = await getLeague(event.leagueId);
+  if (!league) return c.text("League not found.", 404);
+  const body = await c.req.parseBody();
+  const status = typeof body.status === "string" ? body.status : "";
+  if (!ATTENDANCE_STATUSES.includes(status as AttendanceStatus))
+    return c.redirect(back(`/league/event/${event.id}`, "error", "Pick Coming, Not sure or Not coming."));
+  const staff = isStaff(user.role);
+  const targetId = staff ? Number(body.userId) || user.id : user.id;
+  if (!(await isRegistered(league.id, targetId)))
+    return c.redirect(
+      back(
+        `/league/event/${event.id}`,
+        "error",
+        targetId === user.id ? "Register for the league to mark your attendance." : "That driver isn't registered for this league.",
+      ),
+    );
+  if (!staff && !rsvpOpen(event.eventDate, league.rsvpClosesHoursBefore, new Date()))
+    return c.redirect(back(`/league/event/${event.id}`, "error", "Marking for this round has closed. Ask a moderator to change it."));
+  await setAttendance(event.id, targetId, status as AttendanceStatus);
+  return c.redirect(
+    back(
+      `/league/event/${event.id}`,
+      "msg",
+      targetId === user.id ? "Attendance saved." : "Attendance saved for that driver.",
+    ),
   );
 });
 
@@ -278,6 +343,7 @@ leagueRoutes.post("/event/:eventId/delete", async (c) => {
   // the league_calendar_events rows, which reference this event.
   await removeLeagueEventFromCalendars(id).catch((e) => console.error("calendar remove:", e));
   await db.delete(leagueResults).where(eq(leagueResults.eventId, id));
+  await db.delete(leagueAvailability).where(eq(leagueAvailability.eventId, id));
   await db.delete(leagueEvents).where(eq(leagueEvents.id, id));
   return c.redirect(back(`/league/${event.leagueId}`, "msg", "Event deleted."));
 });
@@ -343,6 +409,19 @@ leagueRoutes.get("/:id", async (c) => {
     isRegistered(league.id, user.id),
   ]);
   const boards = await getStandingBoards(league.id, events, league.droppedRounds);
+  // Counts for the rounds still ahead of us, so the calendar shows which
+  // fixtures have a field and which are empty. Rounds already run don't need it.
+  const now = new Date();
+  const upcoming = events.filter((e) => e.eventDate && e.eventDate.getTime() > now.getTime());
+  const answers = await getAttendanceForEvents(upcoming.map((e) => e.id));
+  const coming = new Map<number, AttendanceCounts>();
+  upcoming.forEach((e, i) => {
+    const c = countAttendance(entries.map((x) => x.userId), answers.get(e.id) ?? []);
+    // The next round always shows its tally, because that's the field somebody
+    // has to fill. A round further out only shows one once people have started
+    // answering, so a calendar of twelve fixtures isn't twelve lines of zeroes.
+    if (i === 0 || c.answered) coming.set(e.id, c);
+  });
   return c.html(
     leaguePage(user, {
       league,
@@ -353,6 +432,7 @@ leagueRoutes.get("/:id", async (c) => {
       calendarOn: calendarEnabled(),
       calendarConnected: Boolean(user.googleRefreshToken),
       calendarEmail: user.googleEmail,
+      coming,
       msg: c.req.query("msg"),
       error: c.req.query("error"),
     }),
@@ -498,6 +578,7 @@ leagueRoutes.post("/:id/settings", async (c) => {
       poleBonus: intField(body.poleBonus, 0, 0, 20),
       participationPoints: intField(body.participationPoints, 0, 0, 20),
       droppedRounds: intField(body.droppedRounds, 0, 0, 20),
+      rsvpClosesHoursBefore: intField(body.rsvpClosesHoursBefore, 24, 0, 336),
       registrationOpen: body.registrationOpen === "1",
       bandMin,
       bandMax,

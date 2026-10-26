@@ -11,6 +11,9 @@ import {
   bandWindowText,
   scoringPosition,
   droppedRoundIds,
+  rsvpClosesAt,
+  rsvpOpen,
+  countAttendance,
   rowsFromAppFinish,
   type AppFinish,
   type ResultRow,
@@ -205,5 +208,58 @@ describe("filling a grid from the app", () => {
     const rows = rowsFromAppFinish([row(3, 4, "GT3")], onFile);
     const r = rows.find((x) => x.userId === 3)!;
     expect([r.pole, r.fastestLap, r.adjustment, r.position, r.classPosition]).toEqual([true, true, -3, 1, 1]);
+  });
+});
+
+describe("marking attendance", () => {
+  const at = (iso: string) => new Date(iso);
+  const race = at("2026-11-07T20:00:00Z");
+
+  test("closes the set number of hours before the race", () => {
+    expect(rsvpClosesAt(race, 24)?.toISOString()).toBe("2026-11-06T20:00:00.000Z");
+    expect(rsvpClosesAt(race, 0)?.toISOString()).toBe("2026-11-07T20:00:00.000Z");
+  });
+
+  test("a round with no date has no deadline", () => {
+    expect(rsvpClosesAt(null, 24)).toBeNull();
+    expect(rsvpOpen(null, 24, at("2030-01-01T00:00:00Z"))).toBe(true);
+  });
+
+  test("open up to the deadline and closed from it", () => {
+    expect(rsvpOpen(race, 24, at("2026-11-06T19:59:00Z"))).toBe(true);
+    expect(rsvpOpen(race, 24, at("2026-11-06T20:00:00Z"))).toBe(false);
+    expect(rsvpOpen(race, 24, at("2026-11-06T20:01:00Z"))).toBe(false);
+  });
+
+  test("everyone registered who hasn't answered is counted as not marked", () => {
+    const counts = countAttendance(
+      [1, 2, 3, 4],
+      [
+        { userId: 1, status: "in" },
+        { userId: 2, status: "maybe" },
+        { userId: 3, status: "out" },
+      ],
+    );
+    expect(counts).toEqual({ in: 1, maybe: 1, out: 1, answered: 3, unmarked: 1 });
+  });
+
+  test("an answer from a driver who isn't registered isn't a car", () => {
+    const counts = countAttendance([1], [
+      { userId: 1, status: "in" },
+      { userId: 99, status: "in" },
+    ]);
+    expect(counts.in).toBe(1);
+    expect(counts.unmarked).toBe(0);
+  });
+
+  test("a driver only counts once however many rows they have", () => {
+    const counts = countAttendance(
+      [1, 2],
+      [
+        { userId: 1, status: "in" },
+        { userId: 1, status: "out" },
+      ],
+    );
+    expect(counts).toEqual({ in: 1, maybe: 0, out: 0, answered: 1, unmarked: 1 });
   });
 });

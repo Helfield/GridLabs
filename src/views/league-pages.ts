@@ -1,8 +1,27 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
 import { shortDate, lapTime } from "./components";
-import type { League, LeagueEvent, Entry, EventResult, StandingBoard, AppRaceRecord, CheckVerdict } from "../db/league";
+import type {
+  League,
+  LeagueEvent,
+  Entry,
+  EventResult,
+  Attendance,
+  StandingBoard,
+  AppRaceRecord,
+  CheckVerdict,
+} from "../db/league";
 import { checkAgainstApp, parsePointsTable } from "../db/league";
-import { LICENCE_BANDS, bandWindowText, MIN_CLASS_SIZE } from "../leagueRules";
+import {
+  LICENCE_BANDS,
+  bandWindowText,
+  MIN_CLASS_SIZE,
+  ATTENDANCE_LABELS,
+  rsvpClosesAt,
+  rsvpOpen,
+  countAttendance,
+  type AttendanceCounts,
+  type AttendanceStatus,
+} from "../leagueRules";
 import { LEAGUE_CLASSES } from "../classes";
 
 type Nav = NonNullable<NavUser>;
@@ -138,6 +157,8 @@ export function leaguePage(
     calendarOn: boolean;
     calendarConnected: boolean;
     calendarEmail: string | null;
+    /** Attendance tallies for the rounds that haven't been run, keyed by event id. */
+    coming: Map<number, AttendanceCounts>;
     msg?: string | null;
     error?: string | null;
   },
@@ -260,16 +281,18 @@ export function leaguePage(
     <thead><tr><th class="pos">Rd</th><th>Event</th><th class="hide-sm">Track</th><th class="col-r">When</th><th class="chev"></th></tr></thead>
     <tbody>
     ${events
-      .map(
-        (e) => `
+      .map((e) => {
+        const c = ctx.coming.get(e.id);
+        const tally = c ? `${c.in} coming${c.unmarked ? ` · ${c.unmarked} not marked` : ""}` : "";
+        return `
       <tr class="is-link" onclick="window.location='/league/event/${e.id}'">
         <td class="num pos">${e.round}</td>
-        <td>${escapeHtml(e.name)}</td>
+        <td>${escapeHtml(e.name)}${tally ? `<div class="driver__handle">${tally}</div>` : ""}</td>
         <td class="hide-sm">${escapeHtml(e.track)}</td>
         <td class="num col-r" style="color:var(--dim)">${e.eventDate ? escapeHtml(shortDate(e.eventDate)) : "TBA"}</td>
         <td class="chev">›</td>
-      </tr>`,
-      )
+      </tr>`;
+      })
       .join("")}
     </tbody>
   </table></div>`;
@@ -350,12 +373,15 @@ export function leaguePage(
         <input type="number" name="participationPoints" min="0" max="20" value="${league.participationPoints}"></label>
       <label class="field"><span class="field__label">Worst results dropped from each driver's score</span>
         <input type="number" name="droppedRounds" min="0" max="20" value="${league.droppedRounds}"></label>
+      <label class="field"><span class="field__label">Hours before each round that marking attendance closes</span>
+        <input type="number" name="rsvpClosesHoursBefore" min="0" max="336" value="${league.rsvpClosesHoursBefore}"></label>
       <label class="field" style="display:flex;gap:10px;align-items:center">
         <input type="checkbox" name="registrationOpen" value="1" ${league.registrationOpen ? "checked" : ""} style="width:auto">
         <span>Registration open</span></label>
       <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Save &amp; re-score results</button>
       <p class="hint">Changing the bands only affects who can register from now on. Anyone already in the league stays in it, including a driver who no longer fits the window.</p>
       <p class="hint">Dropped rounds affect the table, not the results. Every round stays on file and the ones that don't count are struck through, so putting it back to 0 brings them all back.</p>
+      <p class="hint">Attendance is what a driver says on each round's page about racing there. Anyone who hasn't answered by the deadline is treated as not racing, which is what the field is built from.</p>
     </form>
   </div>
 </section>`
@@ -406,6 +432,110 @@ ${rows
 </tbody></table></details>`;
 }
 
+/**
+ * The three answers, as three submit buttons in one form. Each button carries
+ * its own value, so clicking it is the whole request -- no dropdown and save
+ * step, which is the point of marking attendance from a phone in the pit.
+ * `userId` is only sent when a moderator marks on someone else's behalf; a
+ * driver's own answer comes from their session.
+ */
+function rsvpButtons(eventId: number, userId: number | null, current: AttendanceStatus | null, small = false): string {
+  const cls = small ? "linkbtn" : "btn btn--ghost btn--sm";
+  return `<form action="/league/event/${eventId}/rsvp" method="post" style="display:inline-flex;gap:10px;align-items:center;margin:0">
+    ${userId === null ? "" : `<input type="hidden" name="userId" value="${userId}">`}
+    ${(["in", "maybe", "out"] as AttendanceStatus[])
+      .map(
+        (s) =>
+          `<button class="${cls}" type="submit" name="status" value="${s}"${
+            current === s ? ' style="color:var(--pb);font-weight:600"' : ' style="color:var(--muted)"'
+          }>${ATTENDANCE_LABELS[s]}</button>`,
+      )
+      .join("")}
+  </form>`;
+}
+
+const ANSWER_COLOUR: Record<AttendanceStatus | "none", string> = {
+  in: "var(--pb)",
+  maybe: "var(--muted)",
+  out: "var(--warn)",
+  none: "var(--dim)",
+};
+
+/**
+ * Who is racing this round. Everyone registered gets to say so until the
+ * league's deadline, and a moderator can say it for them afterwards -- the
+ * organiser is the one who has to build a field out of these answers.
+ */
+function attendancePanel(
+  user: Nav,
+  league: League,
+  event: LeagueEvent,
+  entries: Entry[],
+  attendance: Attendance[],
+  registered: boolean,
+  myAttendance: AttendanceStatus | null,
+  now: Date,
+): string {
+  const staff = isStaff(user);
+  if (!entries.length) return "";
+  const counts = countAttendance(entries.map((e) => e.userId), attendance);
+  const countText = [
+    `${counts.in} coming`,
+    counts.maybe ? `${counts.maybe} not sure` : "",
+    counts.out ? `${counts.out} not coming` : "",
+    counts.unmarked ? `${counts.unmarked} not marked` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const closesAt = rsvpClosesAt(event.eventDate, league.rsvpClosesHoursBefore);
+  const open = rsvpOpen(event.eventDate, league.rsvpClosesHoursBefore, now);
+  const deadline = open
+    ? closesAt
+      ? `Marking closes ${dateTimeUtc(closesAt)}. Saying nothing by then counts as not racing.`
+      : "This round has no date yet, so marking stays open."
+    : `Marking closed ${dateTimeUtc(closesAt)}. A moderator can still change it.`;
+
+  const personal = !registered
+    ? `<p style="margin:0;color:var(--muted)">Attendance is for drivers registered in this league.</p>`
+    : `<p style="margin:0 0 12px;color:var(--muted)">Your answer: <strong style="color:${
+        ANSWER_COLOUR[myAttendance ?? "none"]
+      }">${myAttendance ? ATTENDANCE_LABELS[myAttendance] : "not marked"}</strong>. ${escapeHtml(deadline)}</p>
+      ${open || staff ? rsvpButtons(event.id, null, myAttendance) : ""}`;
+
+  const table = staff
+    ? `<div style="overflow-x:auto;margin-top:18px">
+  <table class="tower">
+    <thead><tr><th>Driver</th><th class="hide-sm">Answer</th><th>Say for them</th></tr></thead>
+    <tbody>
+    ${entries
+      .map((e) => {
+        const s = attendance.find((a) => a.userId === e.userId)?.status ?? null;
+        const handle = [e.team ? escapeHtml(e.team) : "", e.srBand ? `SR ${escapeHtml(e.srBand)}` : "", e.drBand ? `DR ${escapeHtml(e.drBand)}` : ""]
+          .filter(Boolean)
+          .join(" · ");
+        return `
+    <tr>
+      <td><div class="driver__name">${escapeHtml(e.name)}</div>${handle ? `<div class="driver__handle">${handle}</div>` : ""}</td>
+      <td class="hide-sm" style="color:${ANSWER_COLOUR[s ?? "none"]}">${s ? escapeHtml(ATTENDANCE_LABELS[s]) : "Not marked"}</td>
+      <td>${rsvpButtons(event.id, e.userId, s, true)}</td>
+    </tr>`;
+      })
+      .join("")}
+    </tbody>
+  </table></div>`
+    : "";
+
+  return `
+<section class="panel" style="margin-top:28px">
+  <div class="panel__head"><h2>Who's racing</h2><span class="tag">${escapeHtml(countText)}</span></div>
+  <div class="panel__body">
+    ${personal}
+    ${table}
+  </div>
+</section>`;
+}
+
 export function eventPage(
   user: Nav,
   ctx: {
@@ -413,12 +543,17 @@ export function eventPage(
     event: LeagueEvent;
     entries: Entry[];
     results: EventResult[];
+    attendance: Attendance[];
     appRecords: Map<number, AppRaceRecord>;
+    registered: boolean;
+    /** The signed-in driver's own answer for this round, if they have one. */
+    myAttendance: AttendanceStatus | null;
+    now: Date;
     msg?: string | null;
     error?: string | null;
   },
 ): string {
-  const { league, event, entries, results, appRecords } = ctx;
+  const { league, event, entries, results, appRecords, attendance } = ctx;
   const staff = isStaff(user);
   const byUser = new Map(results.map((r) => [r.userId, r]));
   const classed = results.some((r) => r.carClass);
@@ -540,6 +675,7 @@ ${notice(ctx.msg)}${notice(ctx.error, "error")}
   <div class="panel__head"><h2>Results</h2><span class="tag">${published.length}</span></div>
   ${resultsTable}
 </section>
+${attendancePanel(user, league, event, entries, attendance, ctx.registered, ctx.myAttendance, ctx.now)}
 ${entryForm}
 ${editEvent}`;
   return layout(event.name, body, user, { wide: true, wallpaper: "spapark" });

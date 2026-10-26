@@ -144,6 +144,10 @@ export const leagues = pgTable("leagues", {
   // missed weekend don't decide the title. 0 means every round counts. A
   // season of 12 that scores best 10 drops 2. See droppedRoundIds().
   droppedRounds: integer("dropped_rounds").notNull().default(0),
+  // How many hours before a round's start marking attendance closes. Whoever
+  // has said nothing by then is not in the field, so this is the deadline the
+  // round page shows. See rsvpClosesAt() in leagueRules.ts.
+  rsvpClosesHoursBefore: integer("rsvp_closes_hours_before").notNull().default(24),
   // Who may register, as the two ends of LICENCE_BANDS. Both null means anyone.
   // A band window rather than a fixed division name so a third tier is data,
   // not a migration. Stored as the band text because that's what registration
@@ -205,6 +209,25 @@ export const leagueResults = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({ perDriver: uniqueIndex("league_results_event_user_idx").on(t.eventId, t.userId) }),
+);
+
+// What each driver said about a round before the race: coming, not coming, or
+// not sure. One row per driver per round, so changing your mind updates it
+// rather than leaving two answers behind. A driver with NO row has not said
+// anything, which is a different thing from "not sure" and is why status is
+// not defaulted: see countAttendance() in leagueRules.ts. Marking closes
+// rsvpClosesHoursBefore before the round starts, and an unanswered driver is
+// left out of the field.
+export const leagueAvailability = pgTable(
+  "league_availability",
+  {
+    id: serial("id").primaryKey(),
+    eventId: integer("event_id").notNull().references(() => leagueEvents.id),
+    userId: integer("user_id").notNull().references(() => users.id),
+    status: text("status").notNull(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({ perDriver: uniqueIndex("league_availability_event_user_idx").on(t.eventId, t.userId) }),
 );
 
 // The Google Calendar event the site created in each connected driver's

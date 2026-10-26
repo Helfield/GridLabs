@@ -70,6 +70,8 @@ export async function ensureSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "band_min" text`);
   await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "band_max" text`);
   await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "dropped_rounds" integer DEFAULT 0 NOT NULL`);
+  // When marking attendance for a round stops being editable by the driver.
+  await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "rsvp_closes_hours_before" integer DEFAULT 24 NOT NULL`);
   await db.execute(sql`CREATE TABLE IF NOT EXISTS "league_entries" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"league_id" integer NOT NULL REFERENCES "leagues"("id"),
@@ -112,6 +114,17 @@ export async function ensureSchema(): Promise<void> {
   // sr_rating/dr_rating columns are simply no longer read, the way car_number was.
   await db.execute(sql`ALTER TABLE "league_entries" ADD COLUMN IF NOT EXISTS "sr_band" text`);
   await db.execute(sql`ALTER TABLE "league_entries" ADD COLUMN IF NOT EXISTS "dr_band" text`);
+  // Attendance marking (drizzle/0012_league_availability.sql): a new table, so
+  // nothing existing is touched. A driver with no row has not answered, which
+  // the views count separately from a "not sure".
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "league_availability" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"event_id" integer NOT NULL REFERENCES "league_events"("id"),
+	"user_id" integer NOT NULL REFERENCES "users"("id"),
+	"status" text NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+)`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "league_availability_event_user_idx" ON "league_availability" ("event_id","user_id")`);
   // Google Calendar connection on the account, and the per-driver record of
   // which calendar event was created for each league race (see src/googleCalendar.ts).
   await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_email" text`);

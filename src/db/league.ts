@@ -1,9 +1,16 @@
 import { db } from "./client";
-import { users, leagues, leagueEntries, leagueEvents, leagueResults, raceResults, leagueCalendarEvents } from "./schema";
+import { users, leagues, leagueEntries, leagueEvents, leagueResults, leagueAvailability, raceResults, leagueCalendarEvents } from "./schema";
 import { eq, and, asc, desc, inArray, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { calendarEnabled, upsertCalendarEvent, deleteCalendarEvent } from "../googleCalendar";
 import { siteUrl } from "../siteUrl";
-import { droppedRoundIds, scoringPosition, rowsFromAppFinish, type AppFinish, type ResultRow } from "../leagueRules";
+import {
+  droppedRoundIds,
+  scoringPosition,
+  rowsFromAppFinish,
+  type AppFinish,
+  type AttendanceStatus,
+  type ResultRow,
+} from "../leagueRules";
 import { carClass } from "./queries";
 import { scoringClass, scoringClassRank } from "../classes";
 
@@ -122,6 +129,63 @@ export async function getEventResults(eventId: number) {
 }
 
 export type EventResult = Awaited<ReturnType<typeof getEventResults>>[number];
+
+export type Attendance = { userId: number; eventId: number; status: AttendanceStatus; updatedAt: Date };
+
+/** One round's answers. A driver who hasn't said anything has no row. */
+export async function getAttendance(eventId: number): Promise<Attendance[]> {
+  const rows = await db
+    .select({
+      userId: leagueAvailability.userId,
+      eventId: leagueAvailability.eventId,
+      status: leagueAvailability.status,
+      updatedAt: leagueAvailability.updatedAt,
+    })
+    .from(leagueAvailability)
+    .where(eq(leagueAvailability.eventId, eventId));
+  return rows.map((r) => ({ ...r, status: r.status as AttendanceStatus }));
+}
+
+/**
+ * Answers for a whole schedule in one query, grouped by round, so the league
+ * page can put a "n coming" count beside every round without a request each.
+ */
+export async function getAttendanceForEvents(eventIds: number[]): Promise<Map<number, Attendance[]>> {
+  const byEvent = new Map<number, Attendance[]>();
+  if (!eventIds.length) return byEvent;
+  const rows = await db
+    .select({
+      userId: leagueAvailability.userId,
+      eventId: leagueAvailability.eventId,
+      status: leagueAvailability.status,
+      updatedAt: leagueAvailability.updatedAt,
+    })
+    .from(leagueAvailability)
+    .where(inArray(leagueAvailability.eventId, eventIds));
+  for (const r of rows) {
+    const list = byEvent.get(r.eventId) ?? [];
+    list.push({ ...r, status: r.status as AttendanceStatus });
+    byEvent.set(r.eventId, list);
+  }
+  return byEvent;
+}
+
+/**
+ * Say whether a driver is racing a round. Marking twice updates the same row.
+ * "out" is stored rather than removed, because a driver who has said no is a
+ * different thing from one who has said nothing -- the first is a name on a
+ * list, the second is what the round page has to chase up.
+ */
+export async function setAttendance(eventId: number, userId: number, status: AttendanceStatus) {
+  const now = new Date();
+  await db
+    .insert(leagueAvailability)
+    .values({ eventId, userId, status, updatedAt: now })
+    .onConflictDoUpdate({
+      target: [leagueAvailability.eventId, leagueAvailability.userId],
+      set: { status, updatedAt: now },
+    });
+}
 
 export type StandingRow = {
   userId: number;

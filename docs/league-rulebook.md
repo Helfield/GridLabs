@@ -145,6 +145,19 @@ the game's defaults for the class, no unlimited anything. Green flags for light
 incidents, and the server's own penalties stay off so stewarding is done by
 hand after the race rather than by a bot during it.
 
+**Saying whether you're racing.** Every round's page has three buttons: Coming,
+Not sure, Not coming. You answer for yourself, and you can change it until the
+deadline, which is a day before the race start by default and is a setting on
+the league. Nothing said by then counts as not racing. That is deliberate: the
+field is built out of these answers, so a quiet driver is an absent driver, and
+nobody has to chase a WhatsApp message to find out how many cars are coming. A
+moderator can still mark you in after the deadline if you tell them.
+
+The organiser sees the same numbers on the round page and a **n coming** line
+beside each round on the league page, plus who hasn't answered, so a thin field
+is visible days before it becomes a problem rather than ten minutes before the
+server goes up.
+
 ## 5. Points
 
 Scored **within your class**, not overall. In a mixed field the overall table
@@ -309,9 +322,13 @@ For whoever is running it, in order.
 1. Before the session: the round has its race on the page, one for season 1 and
    two when the field splits, track name spelled the way the game spells it, start
    time set, Race Director and Steward named.
-2. Server up 30 minutes early, correct class list, no Hypercar.
-3. After the flag: press **Fill from the app** on each round, check the places
+2. Marking closed the day before. The round page's **Who's racing** panel says
+   who's coming and who never answered. Anyone who said yes in Discord but not on
+   the page gets marked in before the grid is set, and a thin field is a
+   conversation for the week before, not one on race night.
+3. Server up 30 minutes early, correct class list, no Hypercar.
+4. After the flag: press **Fill from the app** on each round, check the places
    against the lobby you watched, save.
-4. Any incident the Steward flagged: adjustments entered on the same day,
+5. Any incident the Steward flagged: adjustments entered on the same day,
    written up on the round page.
-5. Standings publish themselves. Nothing to update by hand.
+6. Standings publish themselves. Nothing to update by hand.

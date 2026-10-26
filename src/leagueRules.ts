@@ -132,6 +132,62 @@ export function droppedRoundIds(scores: Array<{ eventId: number; points: number 
   );
 }
 
+/**
+ * What a driver can say about coming to a round. There is deliberately no
+ * value for "hasn't said anything": that is the absence of a row, it is
+ * counted apart from a not-sure, and once marking closes it means not racing.
+ */
+export const ATTENDANCE_STATUSES = ["in", "out", "maybe"] as const;
+export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
+
+/** How each answer is worded to a person. */
+export const ATTENDANCE_LABELS: Record<AttendanceStatus, string> = {
+  in: "Coming",
+  maybe: "Not sure",
+  out: "Not coming",
+};
+
+/**
+ * When marking closes for a round: its start less the league's hours. A round
+ * with no date has no deadline and stays open, because a blank date means the
+ * fixture isn't finished rather than that the race is tonight.
+ */
+export function rsvpClosesAt(eventDate: Date | null, hoursBefore: number): Date | null {
+  if (!eventDate) return null;
+  return new Date(eventDate.getTime() - Math.max(0, hoursBefore) * 3600 * 1000);
+}
+
+/** Whether a driver can still change their own answer. Staff can after this. */
+export function rsvpOpen(eventDate: Date | null, hoursBefore: number, now: Date): boolean {
+  const closes = rsvpClosesAt(eventDate, hoursBefore);
+  return closes === null || now.getTime() < closes.getTime();
+}
+
+export type AttendanceCounts = { in: number; maybe: number; out: number; answered: number; unmarked: number };
+
+/**
+ * Tally one round. Both sides are passed in because the entry list is what
+ * decides who counts: a driver who withdrew can leave an old answer sitting in
+ * the table, and an answer from someone who isn't entered is not a car.
+ */
+export function countAttendance(
+  registeredUserIds: Iterable<number>,
+  answers: Array<{ userId: number; status: AttendanceStatus }>,
+): AttendanceCounts {
+  const entered = new Set(registeredUserIds);
+  const counts: AttendanceCounts = { in: 0, maybe: 0, out: 0, answered: 0, unmarked: 0 };
+  const seen = new Set<number>();
+  for (const a of answers) {
+    if (!entered.has(a.userId) || seen.has(a.userId)) continue;
+    if (!ATTENDANCE_STATUSES.includes(a.status)) continue;
+    seen.add(a.userId);
+    counts[a.status] += 1;
+  }
+  counts.answered = seen.size;
+  counts.unmarked = Math.max(0, entered.size - counts.answered);
+  return counts;
+}
+
 export type AppFinish = {
   userId: number;
   /** The place the sim reported, across its whole lobby. */
