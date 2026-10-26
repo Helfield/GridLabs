@@ -333,6 +333,27 @@ leagueRoutes.post("/event/:eventId/edit", async (c) => {
   return c.redirect(back(`/league/event/${id}`, "msg", "Event updated."));
 });
 
+leagueRoutes.post("/event/:eventId/date", async (c) => {
+  const user = await staffUser(c);
+  if (!user) return c.text("Not found.", 404);
+  const id = Number(c.req.param("eventId"));
+  const event = await getEvent(id);
+  if (!event) return c.text("Event not found.", 404);
+  const body = await c.req.parseBody();
+  // An empty box is a deliberate clear: a date entered by mistake is worse
+  // than no date, because drivers mark attendance against it.
+  const date = parseEventDate(body.eventDate);
+  await db.update(leagueEvents).set({ eventDate: date }).where(eq(leagueEvents.id, id));
+  const updated = await getEvent(id);
+  const league = await getLeague(event.leagueId);
+  // Putting a date on a round adds it to every connected driver's calendar;
+  // clearing it takes it back out again, which syncLeagueEventToCalendars does.
+  if (updated && league) void syncLeagueEventToCalendars(league, updated).catch((e) => console.error("calendar sync:", e));
+  return c.redirect(
+    back(`/league/${event.leagueId}`, "msg", date ? `Round ${event.round} has a date.` : `Round ${event.round} is back to unscheduled.`),
+  );
+});
+
 leagueRoutes.post("/event/:eventId/delete", async (c) => {
   const user = await coachUser(c);
   if (!user) return c.text("Not found.", 404);
@@ -410,9 +431,10 @@ leagueRoutes.get("/:id", async (c) => {
   ]);
   const boards = await getStandingBoards(league.id, events, league.droppedRounds);
   // Counts for the rounds still ahead of us, so the calendar shows which
-  // fixtures have a field and which are empty. Rounds already run don't need it.
+  // fixtures have a field and which are empty. A round with no date yet is one
+  // that hasn't been run, and its tally is exactly what that column is for.
   const now = new Date();
-  const upcoming = events.filter((e) => e.eventDate && e.eventDate.getTime() > now.getTime());
+  const upcoming = events.filter((e) => !e.eventDate || e.eventDate.getTime() > now.getTime());
   const answers = await getAttendanceForEvents(upcoming.map((e) => e.id));
   const coming = new Map<number, AttendanceCounts>();
   upcoming.forEach((e, i) => {

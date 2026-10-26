@@ -1,6 +1,7 @@
 # Grid Labs League: season structure and stewarding
 
-Version 3, revised 2026-10-26: season 1 runs as one league. This is
+Version 4, revised 2026-10-26: season 1 runs as one league, and round dates are
+set on the site a round at a time instead of fixed here. This is
 the document the website's league pages are built to. Where the site and this
 document disagree, the site is what a driver will see, so fix whichever is wrong.
 
@@ -60,8 +61,10 @@ No privately modified cars, no liveries that hide what class you're in.
 
 ## 3. The season
 
-Twelve rounds, Saturday nights from 7 November 2026 to 6 February 2027, every one
-of them at the same venue for the whole field.
+Twelve rounds, in this order, every one of them at the same venue for the whole
+field. The dates are not in this document: they are set on the league page a
+round at a time as each one is confirmed, and a round with no date yet is simply
+not scheduled.
 
 Dropped rounds: **best 10 of 12.** The drop count is a setting on each league, not
 a rule you have to remember, and season 1's league is set to 2. If the field splits
@@ -83,22 +86,20 @@ higher number of class wins, then podiums.
 Every track below is one the desktop app already has corner-by-corner reference
 data for, so coaching and reference laps work at all twelve without any setup.
 
-| Rd | Date | Track | Why that track |
-| --- | --- | --- | --- |
-| 1 | Sat 7 Nov | Silverstone, Grand Prix layout | Fast, open, generous run-off. Sets the season up without punishing anyone |
-| 2 | Sat 14 Nov | Monza | Braking and traction, no difficult corners, plenty of overtaking |
-| 3 | Sat 21 Nov | Paul Ricard | The most run-off on the calendar. The confidence round |
-| 4 | Sat 28 Nov | Barcelona | Technical and front-loading. Where setup starts to matter |
-| 5 | Sat 5 Dec | Portimão (Algarve) | Elevation and blind entries. The hardest qualifying of the season |
-| 6 | Sat 12 Dec | Spa, shorter layout | The shorter layout for a mixed field. The Endurance layout is for a Series Two that races on its own |
-| 7 | Sat 19 Dec | Le Mans, Circuit de la Sarthe | Feature round. 60 minutes, double points, closes the first half |
-| | *Sat 26 Dec* | *break* | |
-| | *Sat 2 Jan* | *break* | |
-| 8 | Sat 9 Jan | Sebring | Bumpy and abrasive. Brutal on tyres, rewards smooth inputs |
-| 9 | Sat 16 Jan | Circuit of the Americas | The climb into Turn 1 and the downhill section |
-| 10 | Sat 23 Jan | Laguna Seca | The Corkscrew. Short, tight, GT territory |
-| 11 | Sat 30 Jan | Daytona road course | Long straights and sweeping entries. Prototypes' home |
-| 12 | Sat 6 Feb | Bahrain | Stop-start with a long straight. A decider under lights |
+| Rd | Track | Why that track |
+| --- | --- | --- |
+| 1 | Silverstone, Grand Prix layout | Fast, open, generous run-off. Sets the season up without punishing anyone |
+| 2 | Monza | Braking and traction, no difficult corners, plenty of overtaking |
+| 3 | Paul Ricard | The most run-off on the calendar. The confidence round |
+| 4 | Barcelona | Technical and front-loading. Where setup starts to matter |
+| 5 | Portimão (Algarve) | Elevation and blind entries. The hardest qualifying of the season |
+| 6 | Spa, shorter layout | The shorter layout for a mixed field. The Endurance layout is for a Series Two that races on its own |
+| 7 | Le Mans, Circuit de la Sarthe | Feature round. 60 minutes, double points, closes the first half |
+| 8 | Sebring | Bumpy and abrasive. Brutal on tyres, rewards smooth inputs |
+| 9 | Circuit of the Americas | The climb into Turn 1 and the downhill section |
+| 10 | Laguna Seca | The Corkscrew. Short, tight, GT territory |
+| 11 | Daytona road course | Long straights and sweeping entries. Prototypes' home |
+| 12 | Bahrain | Stop-start with a long straight. A decider under lights |
 
 Spares if a server or a date lets you down: Interlagos, Fuji, Long Beach, Buenos
 Aires, and the Monza Curva Grande layout.
@@ -148,10 +149,11 @@ hand after the race rather than by a bot during it.
 **Saying whether you're racing.** Every round's page has three buttons: Coming,
 Not sure, Not coming. You answer for yourself, and you can change it until the
 deadline, which is a day before the race start by default and is a setting on
-the league. Nothing said by then counts as not racing. That is deliberate: the
-field is built out of these answers, so a quiet driver is an absent driver, and
-nobody has to chase a WhatsApp message to find out how many cars are coming. A
-moderator can still mark you in after the deadline if you tell them.
+the league. A round with no date set yet stays open, since there is no deadline
+to miss. Nothing said by the deadline counts as not racing. That is deliberate:
+the field is built out of these answers, so a quiet driver is an absent driver,
+and nobody has to chase a WhatsApp message to find out how many cars are coming.
+A moderator can still mark you in after the deadline if you tell them.
 
 The organiser sees the same numbers on the round page and a **n coming** line
 beside each round on the league page, plus who hasn't answered, so a thin field
@@ -320,9 +322,11 @@ by hand.
 For whoever is running it, in order.
 
 1. Before the session: the round has its race on the page, one for season 1 and
-   two when the field splits, track name spelled the way the game spells it, start
-   time set, Race Director and Steward named.
-2. Marking closed the day before. The round page's **Who's racing** panel says
+   two when the field splits, track name spelled the way the game spells it, and
+   the date and start time set in the calendar row on the league page. Race
+   Director and Steward named.
+2. Marking closed at the deadline a day earlier, unless the round only got its
+   date this week. The round page's **Who's racing** panel says
    who's coming and who never answered. Anyone who said yes in Discord but not on
    the page gets marked in before the grid is set, and a thin field is a
    conversation for the week before, not one on race night.

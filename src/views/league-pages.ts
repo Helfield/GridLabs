@@ -273,6 +273,19 @@ export function leaguePage(
           })
           .join("");
 
+  // Dates get fixed one round at a time, as venues and times are confirmed, so
+  // the calendar row carries the picker itself instead of a page per round.
+  const whenCell = (e: LeagueEvent) => {
+    if (!staff)
+      return `<td class="num col-r" style="color:var(--dim)">${e.eventDate ? escapeHtml(shortDate(e.eventDate)) : "No date yet"}</td>`;
+    const value = dateInputValue(e.eventDate);
+    return `<td class="col-r" onclick="event.stopPropagation()">
+      <form action="/league/event/${e.id}/date" method="post" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:0">
+        <input type="datetime-local" name="eventDate" value="${value}" style="background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:6px">
+        <button class="btn btn--ghost btn--sm" type="submit">Save</button>
+      </form></td>`;
+  };
+
   const calendar =
     events.length === 0
       ? `<div class="empty"><strong>No events yet</strong>The calendar will appear here.</div>`
@@ -289,13 +302,18 @@ export function leaguePage(
         <td class="num pos">${e.round}</td>
         <td>${escapeHtml(e.name)}${tally ? `<div class="driver__handle">${tally}</div>` : ""}</td>
         <td class="hide-sm">${escapeHtml(e.track)}</td>
-        <td class="num col-r" style="color:var(--dim)">${e.eventDate ? escapeHtml(shortDate(e.eventDate)) : "TBA"}</td>
+        ${whenCell(e)}
         <td class="chev">›</td>
       </tr>`;
       })
       .join("")}
     </tbody>
-  </table></div>`;
+  </table></div>
+  ${
+    staff
+      ? `<div class="panel__body" style="color:var(--dim);font-size:13px">Times are UTC. Save an empty box to put a round back to no date.</div>`
+      : ""
+  }`;
 
   const staffPanels = staff
     ? `
