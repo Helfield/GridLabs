@@ -249,8 +249,11 @@ At the end of the season, before registrations open for the next one:
 - Declining a place means it does not pass on to anyone.
 - The bottom three in Series Two move down to Series One, and are welcome to
   say so before the season ends rather than being told.
-- A driver who has only run part of a season is not relegated. Six rounds or
-  more.
+- A driver who has only run part of the season is not relegated. The line is
+  **10 of the 12 rounds**, and it is 10 because that is how many of Series Two's
+  score counts: anyone who ran 10 has a full set of results, same as someone who
+  ran all 12. Nobody drops for rounds they weren't at. The standings table shows
+  every driver's round count, so this is read off the page, not worked out.
 
 ## 11. The app, and how results get in
 
