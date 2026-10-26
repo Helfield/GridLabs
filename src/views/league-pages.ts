@@ -49,10 +49,11 @@ function bandOptions(selected?: string | null, blankLabel = "Not given"): string
 
 /**
  * A dropdown of the LMU licence bands. Blank means the driver left it out, or
- * for a league's window that anyone may register.
+ * for a league's window that anyone may register. `required` is for the forms
+ * where a band has to be declared, and only changes what the browser will send.
  */
-function bandSelect(name: string, label: string, selected?: string | null, blankLabel = "Not given"): string {
-  return `<label class="field"><span class="field__label">${label}</span><select name="${name}">${bandOptions(selected, blankLabel)}</select></label>`;
+function bandSelect(name: string, label: string, selected?: string | null, blankLabel = "Not given", required = false): string {
+  return `<label class="field"><span class="field__label">${label}</span><select name="${name}"${required ? " required" : ""}>${bandOptions(selected, blankLabel)}</select></label>`;
 }
 
 const ANYONE = "Anyone";
@@ -211,11 +212,12 @@ export function leaguePage(
     <form action="/league/${league.id}/register" method="post">
       <label class="field"><span class="field__label">Team name (optional)</span>
         <input type="text" name="team" maxlength="60" autocomplete="off"></label>
-      ${window ? `<p style="margin:0 0 14px;color:var(--muted)">This league is open to <strong style="color:var(--text)">${escapeHtml(window)}</strong>. Both bands are taken from your LMU licence screen, Safety Rating and Driver Rating, and the league places you by the lower of the two.</p>` : ""}
-      ${bandSelect("srBand", `Safety Rating band${window ? "" : " (optional)"}`)}
-      ${bandSelect("drBand", `Driver Rating band${window ? "" : " (optional)"}`)}
+      ${window ? `<p style="margin:0 0 10px;color:var(--muted)">This league is open to <strong style="color:var(--text)">${escapeHtml(window)}</strong>.</p>` : ""}
+      <p style="margin:0 0 14px;color:var(--muted)">Both bands come off your LMU licence screen, Safety Rating and Driver Rating. Pick one for each. The bands are how the league knows who you race against, and the lower of your two is what places you.</p>
+      ${bandSelect("srBand", "Safety Rating band", null, "Choose your band", true)}
+      ${bandSelect("drBand", "Driver Rating band", null, "Choose your band", true)}
       <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Register for ${escapeHtml(league.name)}</button>
-      ${window ? `<p class="hint">You declare your own bands. If you think you belong in this league but don't qualify on what you've entered, ask a moderator to add you.</p>` : ""}
+      <p class="hint">You declare your own bands. If you can't find them on your licence screen, or you think you belong in this league but don't qualify on what you've entered, ask a moderator to add you.</p>
     </form>
   </div>
 </section>`
@@ -350,7 +352,7 @@ export function leaguePage(
           <select name="srBand" title="Safety Rating band" style="background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:5px">${bandOptions(e.srBand)}</select>
           <select name="drBand" title="Driver Rating band" style="background:var(--panel-2);color:var(--text);border:1px solid transparent;border-radius:6px;padding:5px">${bandOptions(e.drBand)}</select>
           <button class="btn btn--ghost btn--sm" type="submit">Save bands</button>
-          ${window && !e.srBand && !e.drBand ? `<span style="color:var(--warn);font-size:12px">No licence recorded</span>` : ""}
+          ${!e.srBand || !e.drBand ? `<span style="color:var(--warn);font-size:12px">${e.srBand || e.drBand ? "A band is missing" : "No licence recorded"}</span>` : ""}
         </form>
       </div>`,
             )

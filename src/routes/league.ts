@@ -471,6 +471,12 @@ leagueRoutes.post("/:id/register", async (c) => {
   const body = await c.req.parseBody();
   const srBand = bandField(body.srBand);
   const drBand = bandField(body.drBand);
+  // Both bands are a condition of registering, windowed league or not: the
+  // bands are the only thing that says who a driver races against, and stage 2
+  // can't sort heats out of a blank. A driver who genuinely can't declare gets
+  // in through a moderator, whose own form keeps a blank as the escape route.
+  if (!srBand || !drBand)
+    return c.redirect(back(`/league/${id}`, "error", "Pick both your Safety Rating band and your Driver Rating band."));
   // The band is taken as declared. This gate catches the honest mistakes and
   // the people who registered for the wrong league, not someone who types a
   // Gold band they don't hold; nothing here can see into LMU's licence file.

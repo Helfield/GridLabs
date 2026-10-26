@@ -1,7 +1,8 @@
 # Grid Labs League: season structure and stewarding
 
-Version 4, revised 2026-10-26: season 1 runs as one league, and round dates are
-set on the site a round at a time instead of fixed here. This is
+Version 5, revised 2026-10-26: season 1 runs as one league, round dates are
+set on the site a round at a time instead of fixed here, and both licence bands
+are a condition of registering. This is
 the document the website's league pages are built to. Where the site and this
 document disagree, the site is what a driver will see, so fix whichever is wrong.
 
@@ -26,20 +27,23 @@ division before the incident record does.
 | Grid Labs Series One | Bronze 1 to Silver 3 |
 | Grid Labs Series Two | Gold 1 to Platinum 3 |
 
-You declare your own bands at registration, from the licence screen in LMU. A
-league with a band window set checks them against the division and turns you away
-if they don't fit; season 1's league has no window, so the bands are recorded and
-not gated. The site cannot see into the game, so this is a good-faith declaration: a
-driver who
-wants into Series Two could type a Gold band they don't hold. The gate
-catches mistakes, wrong-league registrations and people who left the fields
-blank. Someone who belongs in a division but doesn't qualify on what they
-entered gets there through a moderator, who can add them directly and record
-their bands.
+You declare your own bands at registration, from the licence screen in LMU.
+**Both bands are required, in every league**, windowed or not, and the register
+form will not send a blank. The bands are the only thing the site has to say who
+a driver races against, so a blank can't be placed and can't be sorted into a
+heat.
 
-Both bands are required in a windowed league, including for Series One. A
-blank band can't be placed, and the lowest division is not a place to put people
-we know nothing about.
+A league with a band window set checks the declaration against the division and
+turns you away if it doesn't fit. Season 1's league has no window, so the bands
+are recorded and not gated. The site cannot see into the game, so this is a
+good-faith declaration: a driver who wants into Series Two could type a Gold band
+they don't hold. The gate catches mistakes, wrong-league registrations and people
+who left the fields blank.
+
+Someone who belongs in a division but doesn't qualify on what they entered gets
+there through a moderator, who can add them directly. The moderator's add form is
+the one place a band can still be left empty, which is how you bring in a driver
+who hasn't looked at their licence screen yet and fill the bands in afterwards.
 
 ## 2. Cars and classes
 
