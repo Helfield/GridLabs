@@ -1,8 +1,8 @@
 # Grid Labs League: season structure and stewarding
 
-Version 1, written 2026-10-21. This is the document the website's league pages
-are built to. Where the site and this document disagree, the site is what a
-driver will see, so fix whichever is wrong.
+Version 2, revised 2026-10-26: division names and a twelve-round calendar. This is
+the document the website's league pages are built to. Where the site and this
+document disagree, the site is what a driver will see, so fix whichever is wrong.
 
 ## 1. Divisions
 
@@ -12,19 +12,19 @@ division before the incident record does.
 
 | Division | Open to |
 | --- | --- |
-| Grid Labs Academy | Bronze 1 to Silver 3 |
-| Grid Labs Championship | Gold 1 to Platinum 3 |
+| Grid Labs Series One | Bronze 1 to Silver 3 |
+| Grid Labs Series Two | Gold 1 to Platinum 3 |
 
 You declare your own bands at registration, from the licence screen in LMU. The
 site checks them against the division and turns you away if they don't fit. It
 cannot see into the game, so this is a good-faith declaration: a driver who
-wants into the Championship could type a Gold band they don't hold. The gate
+wants into Series Two could type a Gold band they don't hold. The gate
 catches mistakes, wrong-league registrations and people who left the fields
 blank. Someone who belongs in a division but doesn't qualify on what they
 entered gets there through a moderator, who can add them directly and record
 their bands.
 
-Both bands are required in a windowed league, including for the Academy. A
+Both bands are required in a windowed league, including for Series One. A
 blank band can't be placed, and the lowest division is not a place to put people
 we know nothing about.
 
@@ -32,7 +32,7 @@ we know nothing about.
 
 Every class Le Mans Ultimate fields except Hypercar:
 
-- **LMP2**, including the ELMS-spec car. One class, one championship. They
+- **LMP2**, including the ELMS-spec car. One class, one title. They
   arrive at a corner close enough to race each other, and splitting them would
   give us two one-car titles.
 - **LMP3**
@@ -41,20 +41,53 @@ Every class Le Mans Ultimate fields except Hypercar:
 - **GT4**, when the game has it
 
 One car per driver per round. A driver may change class between rounds, and
-their championship moves with them.
+their class title moves with them.
 
 Any car in any class is fine as long as it is the class the server put you in.
 No privately modified cars, no liveries that hide what class you're in.
 
 ## 3. The season
 
-Eight rounds. Your two worst results are dropped, so one bad night, one
-illness and one person who lost it at the first chicane don't decide the
-title. Ties on points go to the higher number of class wins, then second
-places, then whoever did it in fewer rounds.
+Twelve rounds, Saturday nights from 7 November 2026 to 6 February 2027. Both
+divisions race the same venue each week, Series One first and Series Two after.
 
-The calendar lives on the league page. A round is one track, one date, both
-divisions on the same weekend in their own races.
+Dropped rounds: **Series Two's best 10 of 12 count, Series One's best 9 of 12.**
+The extra drop in Series One is because those drivers are still learning the game
+and one missed night should not end their season. Ties on points go to the higher
+number of class wins, then second places, then whoever did it in fewer rounds.
+
+Every track below is one the desktop app already has corner-by-corner reference
+data for, so coaching and reference laps work at all twelve without any setup.
+
+| Rd | Date | Track | Why that track |
+| --- | --- | --- | --- |
+| 1 | Sat 7 Nov | Silverstone, Grand Prix layout | Fast, open, generous run-off. Sets the season up without punishing anyone |
+| 2 | Sat 14 Nov | Monza | Braking and traction, no difficult corners, plenty of overtaking |
+| 3 | Sat 21 Nov | Paul Ricard | The most run-off on the calendar. The confidence round |
+| 4 | Sat 28 Nov | Barcelona | Technical and front-loading. Where setup starts to matter |
+| 5 | Sat 5 Dec | Portimão (Algarve) | Elevation and blind entries. The hardest qualifying of the season |
+| 6 | Sat 12 Dec | Spa | Series One on the shorter layout, Series Two on the Endurance layout |
+| 7 | Sat 19 Dec | Le Mans, Circuit de la Sarthe | Feature round. 60 minutes, double points, closes the first half |
+| | *Sat 26 Dec* | *break* | |
+| | *Sat 2 Jan* | *break* | |
+| 8 | Sat 9 Jan | Sebring | Bumpy and abrasive. Brutal on tyres, rewards smooth inputs |
+| 9 | Sat 16 Jan | Circuit of the Americas | The climb into Turn 1 and the downhill section |
+| 10 | Sat 23 Jan | Laguna Seca | The Corkscrew. Short, tight, GT territory |
+| 11 | Sat 30 Jan | Daytona road course | Long straights and sweeping entries. Prototypes' home |
+| 12 | Sat 6 Feb | Bahrain | Stop-start with a long straight. A decider under lights |
+
+Spares if a server or a date lets you down: Interlagos, Fuji, Long Beach, Buenos
+Aires, and the Monza Curva Grande layout.
+
+Every class is eligible at every round. GT-only and prototype-only rounds were
+considered and dropped: a round you cannot score in is worse than a varied
+calendar, and it breaks the drop rule. The variety comes from the venues instead,
+since Monza and Paul Ricard suit the GTE and GT4 cars, Daytona and Spa suit the
+prototypes, and Laguna Seca suits GT3.
+
+The league page carries all of this as events: one track and one date per round,
+both divisions on the same weekend in their own races. If a round moves, change
+the event, not this document.
 
 ## 4. A race weekend
 
@@ -66,11 +99,13 @@ Same shape every round, for both divisions.
 | Qualifying | 15 min |
 | Race | 45 min |
 
+At Le Mans only, the race is 60 minutes.
+
 **Grid.** Qualifying decides it, by class, then by place within class.
 
-- Championship: slowest class at the back, so the prototypes have to catch and
+- Series Two: slowest class at the back, so the prototypes have to catch and
   pass and the racing is made by the drivers who can be trusted to make it.
-- Academy: fastest class at the front, so an LMP2 isn't picking through a train
+- Series One: fastest class at the front, so an LMP2 isn't picking through a train
   of GT3s into the first corner on lap one.
 
 **Start.** Rolling, behind the leader. No standing starts: they cost more
@@ -98,6 +133,9 @@ it.
 | Class position | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Points | 25 | 18 | 15 | 12 | 10 | 8 | 6 | 4 | 2 | 1 |
+
+Le Mans pays double, so 50 for a class win there. Everything else pays the table
+above.
 
 Plus 1 for class pole and 1 for fastest lap in your class. A driver who did not
 start scores nothing. A driver who retired but was running at the end scores
@@ -185,8 +223,8 @@ corner and the lap. The point is not the shame, it is that three people reading
 it change what they do at that corner next week.
 
 **Division review (level 6)** means the stewards say a driver is in the wrong
-division, and they move down for at least one season. This is the only way the
-Championship stays honest while the bands are self-declared, and it does not
+division, and they move down for at least one season. This is the only way
+Series Two stays honest while the bands are self-declared, and it does not
 need to see into LMU to work.
 
 ## 9. Protests and appeals
@@ -205,11 +243,11 @@ become the season.
 
 At the end of the season, before registrations open for the next one:
 
-- The top three in Academy are invited up to the Championship. Taking the
+- The top three in Series One are invited up to Series Two. Taking the
   invitation is a choice; three of them will be happier where they are, and
   that is allowed.
 - Declining a place means it does not pass on to anyone.
-- The bottom three in the Championship move down to Academy, and are welcome to
+- The bottom three in Series Two move down to Series One, and are welcome to
   say so before the season ends rather than being told.
 - A driver who has only run part of a season is not relegated. Six rounds or
   more.

@@ -18,8 +18,8 @@ import { scoringClass } from "../src/classes";
 
 // The two divisions as Grid Labs runs them: everyone at Silver 3 or below, and
 // everyone at Gold 1 or above.
-const ACADEMY = { bandMin: "Bronze 1", bandMax: "Silver 3" };
-const CHAMPIONSHIP = { bandMin: "Gold 1", bandMax: "Platinum 3" };
+const SERIES_ONE = { bandMin: "Bronze 1", bandMax: "Silver 3" };
+const SERIES_TWO = { bandMin: "Gold 1", bandMax: "Platinum 3" };
 const OPEN = { bandMin: null, bandMax: null };
 
 /** A driver the app saw crossing the line, `place` as the sim reported it. */
@@ -34,28 +34,28 @@ const row = (userId: number, place: number, carClass: string | null = null): App
 describe("division by licence band", () => {
   test("the lower of SR and DR places the driver", () => {
     // Gold pace, Silver safety: the pass has to be made by both of them, so
-    // this is an Academy driver until the SR catches up.
+    // this is a Series One driver until the SR catches up.
     expect(effectiveBand("Gold 2", "Silver 3")).toBe(bandIndex("Silver 3"));
-    expect(qualifies(CHAMPIONSHIP, { srBand: "Gold 2", drBand: "Silver 3" })).toBe(false);
-    expect(qualifies(ACADEMY, { srBand: "Gold 2", drBand: "Silver 3" })).toBe(true);
+    expect(qualifies(SERIES_TWO, { srBand: "Gold 2", drBand: "Silver 3" })).toBe(false);
+    expect(qualifies(SERIES_ONE, { srBand: "Gold 2", drBand: "Silver 3" })).toBe(true);
   });
 
   test("both bands in the window gets you in", () => {
-    expect(qualifies(CHAMPIONSHIP, { srBand: "Gold 1", drBand: "Platinum 2" })).toBe(true);
-    expect(qualifies(ACADEMY, { srBand: "Bronze 3", drBand: "Silver 1" })).toBe(true);
+    expect(qualifies(SERIES_TWO, { srBand: "Gold 1", drBand: "Platinum 2" })).toBe(true);
+    expect(qualifies(SERIES_ONE, { srBand: "Bronze 3", drBand: "Silver 1" })).toBe(true);
   });
 
   test("the cut falls between Silver 3 and Gold 1", () => {
     expect(LICENCE_BANDS.indexOf("Silver 3") + 1).toBe(LICENCE_BANDS.indexOf("Gold 1"));
-    expect(qualifies(ACADEMY, { srBand: "Gold 1", drBand: "Gold 1" })).toBe(false);
-    expect(qualifies(CHAMPIONSHIP, { srBand: "Silver 3", drBand: "Silver 3" })).toBe(false);
+    expect(qualifies(SERIES_ONE, { srBand: "Gold 1", drBand: "Gold 1" })).toBe(false);
+    expect(qualifies(SERIES_TWO, { srBand: "Silver 3", drBand: "Silver 3" })).toBe(false);
   });
 
   test("nothing declared means nothing can be confirmed", () => {
     // Not even for the bottom division: declaring the bands is what makes the
     // gate work without a person on the door.
-    expect(qualifies(ACADEMY, { srBand: null, drBand: null })).toBe(false);
-    expect(qualifies(ACADEMY, { srBand: "Silver 2", drBand: null })).toBe(false);
+    expect(qualifies(SERIES_ONE, { srBand: null, drBand: null })).toBe(false);
+    expect(qualifies(SERIES_ONE, { srBand: "Silver 2", drBand: null })).toBe(false);
     expect(effectiveBand(null, null)).toBe(-1);
   });
 
@@ -71,7 +71,7 @@ describe("division by licence band", () => {
   });
 
   test("the window reads as one line", () => {
-    expect(bandWindowText(ACADEMY)).toBe("Bronze 1 to Silver 3");
+    expect(bandWindowText(SERIES_ONE)).toBe("Bronze 1 to Silver 3");
     expect(bandWindowText({ bandMin: "Gold 1", bandMax: "Gold 1" })).toBe("Gold 1");
     expect(bandWindowText(OPEN)).toBe(null);
   });
