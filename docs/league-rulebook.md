@@ -1,10 +1,20 @@
 # Grid Labs League: season structure and stewarding
 
-Version 2, revised 2026-10-26: division names and a twelve-round calendar. This is
+Version 3, revised 2026-10-26: season 1 runs as one league. This is
 the document the website's league pages are built to. Where the site and this
 document disagree, the site is what a driver will see, so fix whichever is wrong.
 
 ## 1. Divisions
+
+**Season 1 is a single league with every band in it.** The site holds one league
+row, no band window, and the twelve rounds below. Nobody is turned away for the
+bands they declared.
+
+Two divisions is still the plan and everything in this document is written for
+it. It needs enough entries in each to race separately, and until then the
+divisions are a shape rather than a setup. Where a rule below differs between the
+two, season 1 follows the Series One line, because the newer drivers are in the
+same field.
 
 Two, split on the LMU licence bands. A driver is placed by the **lower** of
 their Safety Rating and Driver Rating, so pace does not buy you into the top
@@ -15,9 +25,11 @@ division before the incident record does.
 | Grid Labs Series One | Bronze 1 to Silver 3 |
 | Grid Labs Series Two | Gold 1 to Platinum 3 |
 
-You declare your own bands at registration, from the licence screen in LMU. The
-site checks them against the division and turns you away if they don't fit. It
-cannot see into the game, so this is a good-faith declaration: a driver who
+You declare your own bands at registration, from the licence screen in LMU. A
+league with a band window set checks them against the division and turns you away
+if they don't fit; season 1's league has no window, so the bands are recorded and
+not gated. The site cannot see into the game, so this is a good-faith declaration: a
+driver who
 wants into Series Two could type a Gold band they don't hold. The gate
 catches mistakes, wrong-league registrations and people who left the fields
 blank. Someone who belongs in a division but doesn't qualify on what they
@@ -48,19 +60,19 @@ No privately modified cars, no liveries that hide what class you're in.
 
 ## 3. The season
 
-Twelve rounds, Saturday nights from 7 November 2026 to 6 February 2027. Both
-divisions race the same venue each week, Series One first and Series Two after.
+Twelve rounds, Saturday nights from 7 November 2026 to 6 February 2027, every one
+of them at the same venue for the whole field.
 
-Dropped rounds: **Series Two's best 10 of 12 count, Series One's best 9 of 12.**
-The extra drop in Series One is because those drivers are still learning the game
-and one missed night should not end their season.
+Dropped rounds: **best 10 of 12.** The drop count is a setting on each league, not
+a rule you have to remember, and season 1's league is set to 2. If the field splits
+into two divisions, Series One can go to 3, because those drivers are still learning
+the game and one missed night should not end their season.
 
-The number of dropped rounds is a setting on each league, not a rule you have to
-remember. Series One is set to 3 and Series Two to 2, and changing it re-scores the
-table straight away. Every round stays on file; the ones that don't count are struck
-through in the standings, so setting it back to 0 counts the whole season again. A
-round only drops if you ran it, so nobody is ever scored on zero rounds, and a
-negative score from the stewards never gets dropped: a penalty is not a slow day.
+Changing the setting re-scores the table straight away. Every round stays on file;
+the ones that don't count are struck through in the standings, so setting it back to
+0 counts the whole season again. A round only drops if you ran it, so nobody is
+ever scored on zero rounds, and a negative score from the stewards never gets
+dropped: a penalty is not a slow day.
 
 A win that gets dropped from the points is still a win, a dropped podium is still a
 podium, and a dropped round is still a round you ran. The standings columns for
@@ -78,7 +90,7 @@ data for, so coaching and reference laps work at all twelve without any setup.
 | 3 | Sat 21 Nov | Paul Ricard | The most run-off on the calendar. The confidence round |
 | 4 | Sat 28 Nov | Barcelona | Technical and front-loading. Where setup starts to matter |
 | 5 | Sat 5 Dec | Portimão (Algarve) | Elevation and blind entries. The hardest qualifying of the season |
-| 6 | Sat 12 Dec | Spa | Series One on the shorter layout, Series Two on the Endurance layout |
+| 6 | Sat 12 Dec | Spa, shorter layout | The shorter layout for a mixed field. The Endurance layout is for a Series Two that races on its own |
 | 7 | Sat 19 Dec | Le Mans, Circuit de la Sarthe | Feature round. 60 minutes, double points, closes the first half |
 | | *Sat 26 Dec* | *break* | |
 | | *Sat 2 Jan* | *break* | |
@@ -97,13 +109,12 @@ calendar, and it breaks the drop rule. The variety comes from the venues instead
 since Monza and Paul Ricard suit the GTE and GT4 cars, Daytona and Spa suit the
 prototypes, and Laguna Seca suits GT3.
 
-The league page carries all of this as events: one track and one date per round,
-both divisions on the same weekend in their own races. If a round moves, change
-the event, not this document.
+The league page carries all of this as events: one track and one date per round.
+If a round moves, change the event, not this document.
 
 ## 4. A race weekend
 
-Same shape every round, for both divisions.
+Same shape every round.
 
 | Session | Length |
 | --- | --- |
@@ -253,6 +264,9 @@ become the season.
 
 ## 10. Promotion and relegation
 
+Season 1 is one league, so none of this runs yet. It starts the season the field
+splits into two.
+
 At the end of the season, before registrations open for the next one:
 
 - The top three in Series One are invited up to Series Two. Taking the
@@ -275,7 +289,7 @@ of the lobby. The site's results grid has a **Fill from the app** button that
 turns all of that into the grid in one press, ranked among the league's own
 drivers.
 
-That means an organiser running both divisions types nothing on a normal night.
+That means an organiser running the league types nothing on a normal night.
 It still needs a human for three things:
 
 - Drivers who ran without the app, or whose session didn't upload.
@@ -292,9 +306,10 @@ by hand.
 
 For whoever is running it, in order.
 
-1. Before the session: both races on the round page, track name spelled the way
-   the game spells it, start time set, Race Director and Steward named.
-2. Server up 30 minutes early, both divisions, correct class list, no Hypercar.
+1. Before the session: the round has its race on the page, one for season 1 and
+   two when the field splits, track name spelled the way the game spells it, start
+   time set, Race Director and Steward named.
+2. Server up 30 minutes early, correct class list, no Hypercar.
 3. After the flag: press **Fill from the app** on each round, check the places
    against the lobby you watched, save.
 4. Any incident the Steward flagged: adjustments entered on the same day,
