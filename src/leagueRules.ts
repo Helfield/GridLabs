@@ -106,6 +106,32 @@ export function scoringPosition(r: { position: number | null; classPosition?: nu
   return r.classPosition ?? r.position;
 }
 
+/**
+ * The rounds a driver's score is NOT taken from.
+ *
+ * A season scores its best results, so the worst `dropped` of a driver's rounds
+ * leave the total and one bad night doesn't decide the title. Three things the
+ * callers can't get from a naive "drop the lowest":
+ *
+ * - At least one round always counts. Someone who ran 2 of 12 in a league that
+ *   drops 2 still has a score, not a zero for having entered.
+ * - A negative round is a stewards' penalty rather than a slow day, so it is
+ *   never dropped. If it were, taking a time penalty would improve your
+ *   championship.
+ * - Pass the rounds in calendar order. The sort is stable, so when two rounds
+ *   score the same it is the earlier one that goes and recent form stands.
+ */
+export function droppedRoundIds(scores: Array<{ eventId: number; points: number }>, dropped: number): Set<number> {
+  const droppable = scores.filter((s) => s.points >= 0);
+  const count = Math.max(0, Math.min(Math.max(dropped, 0), droppable.length - 1));
+  return new Set(
+    droppable
+      .sort((a, b) => a.points - b.points)
+      .slice(0, count)
+      .map((s) => s.eventId),
+  );
+}
+
 export type AppFinish = {
   userId: number;
   /** The place the sim reported, across its whole lobby. */

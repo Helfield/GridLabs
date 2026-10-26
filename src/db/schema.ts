@@ -140,6 +140,10 @@ export const leagues = pgTable("leagues", {
   poleBonus: integer("pole_bonus").notNull().default(0),
   // For a classified finisher outside the table, and for a DNF.
   participationPoints: integer("participation_points").notNull().default(0),
+  // Worst results left out of a driver's score, so one bad night and one
+  // missed weekend don't decide the title. 0 means every round counts. A
+  // season of 12 that scores best 10 drops 2. See droppedRoundIds().
+  droppedRounds: integer("dropped_rounds").notNull().default(0),
   // Who may register, as the two ends of LICENCE_BANDS. Both null means anyone.
   // A band window rather than a fixed division name so a third tier is data,
   // not a migration. Stored as the band text because that's what registration

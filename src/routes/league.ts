@@ -342,7 +342,7 @@ leagueRoutes.get("/:id", async (c) => {
     getEvents(league.id),
     isRegistered(league.id, user.id),
   ]);
-  const boards = await getStandingBoards(league.id, events);
+  const boards = await getStandingBoards(league.id, events, league.droppedRounds);
   return c.html(
     leaguePage(user, {
       league,
@@ -497,6 +497,7 @@ leagueRoutes.post("/:id/settings", async (c) => {
       fastestLapBonus: intField(body.fastestLapBonus, 0, 0, 20),
       poleBonus: intField(body.poleBonus, 0, 0, 20),
       participationPoints: intField(body.participationPoints, 0, 0, 20),
+      droppedRounds: intField(body.droppedRounds, 0, 0, 20),
       registrationOpen: body.registrationOpen === "1",
       bandMin,
       bandMax,

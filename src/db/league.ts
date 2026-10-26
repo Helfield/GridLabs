@@ -3,7 +3,7 @@ import { users, leagues, leagueEntries, leagueEvents, leagueResults, raceResults
 import { eq, and, asc, desc, inArray, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { calendarEnabled, upsertCalendarEvent, deleteCalendarEvent } from "../googleCalendar";
 import { siteUrl } from "../siteUrl";
-import { scoringPosition, rowsFromAppFinish, type AppFinish, type ResultRow } from "../leagueRules";
+import { droppedRoundIds, scoringPosition, rowsFromAppFinish, type AppFinish, type ResultRow } from "../leagueRules";
 import { carClass } from "./queries";
 import { scoringClass, scoringClassRank } from "../classes";
 
@@ -137,6 +137,8 @@ export type StandingRow = {
   rounds: number;
   /** Points per event id, for the results grid. */
   byEvent: Map<number, number>;
+  /** Event ids left out of `points` because the league drops its worst rounds. */
+  droppedEvents: Set<number>;
 };
 
 /** One championship table. `carClass` is null for a league that scores overall. */
@@ -160,8 +162,17 @@ function rankRows(rows: StandingRow[]): StandingRow[] {
  *
  * Wins and podiums count the place the points came from, so a class win reads
  * as a win.
+ *
+ * `droppedRounds` is the league's own setting: the worst of a driver's rounds
+ * leave their total, so `points` is a best-N score while `rounds`, `wins` and
+ * `podiums` still describe every race they ran. A win that got dropped from the
+ * points is still a win.
  */
-export async function getStandingBoards(leagueId: number, events: LeagueEvent[]): Promise<StandingBoard[]> {
+export async function getStandingBoards(
+  leagueId: number,
+  events: LeagueEvent[],
+  droppedRounds = 0,
+): Promise<StandingBoard[]> {
   const entries = await getEntries(leagueId);
   const eventIds = events.map((e) => e.id);
   const results = eventIds.length
@@ -182,13 +193,14 @@ export async function getStandingBoards(leagueId: number, events: LeagueEvent[])
       podiums: 0,
       rounds: 0,
       byEvent: new Map(),
+      droppedEvents: new Set(),
     });
   }
+  const roundOrder = [...events].sort((a, b) => a.round - b.round);
   const byEvent = new Map<number, typeof results[number][]>();
   for (const r of results) {
     const row = rows.get(r.userId);
     if (!row) continue; // withdrew after scoring: their results stay on file but off the table
-    row.points += r.points;
     row.byEvent.set(r.eventId, r.points);
     if (r.status !== "dns") row.rounds += 1;
     const place = scoringPosition(r);
@@ -201,11 +213,20 @@ export async function getStandingBoards(leagueId: number, events: LeagueEvent[])
   // Their class is the one they were last scored in, read in round order: a
   // driver who changes car mid-season moves boards rather than being stuck on
   // the table of the class they started in.
-  for (const e of [...events].sort((a, b) => a.round - b.round)) {
+  for (const e of roundOrder) {
     for (const r of byEvent.get(e.id) ?? []) {
       const row = rows.get(r.userId);
       if (row && r.carClass) row.carClass = r.carClass;
     }
+  }
+  // The score is built last, in round order, because the drop rule needs to
+  // know which rounds exist before it can say which of them don't count.
+  for (const row of rows.values()) {
+    const scores = roundOrder
+      .filter((e) => row.byEvent.has(e.id))
+      .map((e) => ({ eventId: e.id, points: row.byEvent.get(e.id)! }));
+    row.droppedEvents = droppedRoundIds(scores, droppedRounds);
+    row.points = scores.reduce((total, s) => (row.droppedEvents.has(s.eventId) ? total : total + s.points), 0);
   }
 
   const boards = new Map<string | null, StandingRow[]>();

@@ -57,6 +57,7 @@ function dateTimeUtc(d: Date | null | undefined): string {
 function pointsSummary(l: League): string {
   const table = parsePointsTable(l.pointsTable);
   const parts = [`P1–P${table.length}: ${table.join(", ")}`];
+  if (l.droppedRounds) parts.push(`worst ${l.droppedRounds} dropped`);
   if (l.fastestLapBonus) parts.push(`fastest lap +${l.fastestLapBonus}`);
   if (l.poleBonus) parts.push(`pole +${l.poleBonus}`);
   if (l.participationPoints) parts.push(`other finishers/DNF ${l.participationPoints}`);
@@ -201,6 +202,16 @@ export function leaguePage(
 
   const eventHeaders = events.map((e) => `<th class="col-r hide-sm" title="${escapeHtml(e.name)}">R${e.round}</th>`).join("");
 
+  // A dropped round is still shown, struck through: it happened, and a driver
+  // works out their own total better when they can see what left it.
+  const roundCell = (e: LeagueEvent, s: StandingBoard["rows"][number]) => {
+    const style = 'class="num col-r hide-sm" style="color:var(--dim)"';
+    if (!s.byEvent.has(e.id)) return `<td ${style}>–</td>`;
+    const points = s.byEvent.get(e.id);
+    if (!s.droppedEvents.has(e.id)) return `<td ${style}>${points}</td>`;
+    return `<td ${style} title="Does not count: the worst ${league.droppedRounds} result${league.droppedRounds === 1 ? "" : "s"} in this league are dropped"><s style="opacity:.45">${points}</s></td>`;
+  };
+
   const boardTable = (rows: StandingBoard["rows"]) => `
 <table class="tower">
   <thead><tr><th class="pos">#</th><th>Driver</th>${eventHeaders}<th class="col-r hide-sm">Rounds</th><th class="col-r">Wins</th><th class="col-r">Pts</th></tr></thead>
@@ -212,7 +223,7 @@ export function leaguePage(
       <td class="num pos">${i + 1}</td>
       <td><div class="driver__name">${escapeHtml(s.name)}</div>
           <div class="driver__handle">${[s.team ? escapeHtml(s.team) : "", s.srBand ? `SR ${escapeHtml(s.srBand)}` : "", s.drBand ? `DR ${escapeHtml(s.drBand)}` : "", s.carClass ? escapeHtml(s.carClass) : ""].filter(Boolean).join(" · ")}</div></td>
-      ${events.map((e) => `<td class="num col-r hide-sm" style="color:var(--dim)">${s.byEvent.has(e.id) ? s.byEvent.get(e.id) : "–"}</td>`).join("")}
+      ${events.map((e) => roundCell(e, s)).join("")}
       <td class="num col-r hide-sm" style="color:var(--dim)">${s.rounds}</td>
       <td class="num col-r">${s.wins}</td>
       <td class="num col-r"><strong>${s.points}</strong></td>
@@ -337,11 +348,14 @@ export function leaguePage(
         <input type="number" name="poleBonus" min="0" max="20" value="${league.poleBonus}"></label>
       <label class="field"><span class="field__label">Points for finishers outside the table, and for a DNF</span>
         <input type="number" name="participationPoints" min="0" max="20" value="${league.participationPoints}"></label>
+      <label class="field"><span class="field__label">Worst results dropped from each driver's score</span>
+        <input type="number" name="droppedRounds" min="0" max="20" value="${league.droppedRounds}"></label>
       <label class="field" style="display:flex;gap:10px;align-items:center">
         <input type="checkbox" name="registrationOpen" value="1" ${league.registrationOpen ? "checked" : ""} style="width:auto">
         <span>Registration open</span></label>
       <button class="btn btn--discord" style="background:var(--fastest)" type="submit">Save &amp; re-score results</button>
       <p class="hint">Changing the bands only affects who can register from now on. Anyone already in the league stays in it, including a driver who no longer fits the window.</p>
+      <p class="hint">Dropped rounds affect the table, not the results. Every round stays on file and the ones that don't count are struck through, so putting it back to 0 brings them all back.</p>
     </form>
   </div>
 </section>`

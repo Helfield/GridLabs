@@ -53,8 +53,20 @@ divisions race the same venue each week, Series One first and Series Two after.
 
 Dropped rounds: **Series Two's best 10 of 12 count, Series One's best 9 of 12.**
 The extra drop in Series One is because those drivers are still learning the game
-and one missed night should not end their season. Ties on points go to the higher
-number of class wins, then second places, then whoever did it in fewer rounds.
+and one missed night should not end their season.
+
+The number of dropped rounds is a setting on each league, not a rule you have to
+remember. Series One is set to 3 and Series Two to 2, and changing it re-scores the
+table straight away. Every round stays on file; the ones that don't count are struck
+through in the standings, so setting it back to 0 counts the whole season again. A
+round only drops if you ran it, so nobody is ever scored on zero rounds, and a
+negative score from the stewards never gets dropped: a penalty is not a slow day.
+
+A win that gets dropped from the points is still a win, a dropped podium is still a
+podium, and a dropped round is still a round you ran. The standings columns for
+wins, podiums and rounds count every result, so they don't move when the drop
+setting does. Only the points total is a best-N score, and ties on points go to the
+higher number of class wins, then podiums.
 
 Every track below is one the desktop app already has corner-by-corner reference
 data for, so coaching and reference laps work at all twelve without any setup.

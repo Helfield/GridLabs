@@ -69,6 +69,7 @@ export async function ensureSchema(): Promise<void> {
   // league open to everyone, which is what every league here is today.
   await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "band_min" text`);
   await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "band_max" text`);
+  await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "dropped_rounds" integer DEFAULT 0 NOT NULL`);
   await db.execute(sql`CREATE TABLE IF NOT EXISTS "league_entries" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"league_id" integer NOT NULL REFERENCES "leagues"("id"),

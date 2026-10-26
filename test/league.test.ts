@@ -10,6 +10,7 @@ import {
   qualifies,
   bandWindowText,
   scoringPosition,
+  droppedRoundIds,
   rowsFromAppFinish,
   type AppFinish,
   type ResultRow,
@@ -82,6 +83,48 @@ describe("which place a result is scored on", () => {
     expect(scoringPosition({ position: 7, classPosition: 2 })).toBe(2);
     expect(scoringPosition({ position: 7, classPosition: null })).toBe(7);
     expect(scoringPosition({ position: 7 })).toBe(7);
+  });
+});
+
+describe("dropped rounds", () => {
+  // Rounds in calendar order, event ids 1..n, which is what getStandingBoards
+  // hands droppedRoundIds.
+  const whichRoundsAreDropped = (points: number[], dropped: number) =>
+    droppedRoundIds(
+      points.map((p, i) => ({ eventId: i + 1, points: p })),
+      dropped,
+    );
+  const kept = (points: number[], dropped: number) => {
+    const gone = whichRoundsAreDropped(points, dropped);
+    return points.filter((_, i) => !gone.has(i + 1));
+  };
+
+  test("a 12-round season that drops 2 scores the best 10", () => {
+    expect(kept([25, 18, 15, 12, 10, 8, 6, 4, 2, 1, 18, 25], 2)).toEqual([25, 18, 15, 12, 10, 8, 6, 4, 18, 25]);
+  });
+
+  test("nobody is scored on zero rounds", () => {
+    expect(kept([8, 25], 2)).toEqual([25]);
+    expect(kept([8, 25], 9)).toEqual([25]);
+  });
+
+  test("a penalty is not a slow day, so it is never dropped", () => {
+    // -10 came from the stewards. Dropping it would hand the driver a better
+    // championship for being caught out.
+    expect(kept([-10, 0, 25], 1)).toEqual([-10, 25]);
+    expect(whichRoundsAreDropped([-10, -4], 2).size).toBe(0);
+  });
+
+  test("a DNF that scores nothing can be dropped", () => {
+    expect(kept([25, 0, 18], 1)).toEqual([25, 18]);
+  });
+
+  test("two equal rounds drop the earlier one", () => {
+    expect(kept([18, 18, 25], 1)).toEqual([18, 25]);
+  });
+
+  test("0 drops means every round counts", () => {
+    expect(kept([1, 2, 3], 0)).toEqual([1, 2, 3]);
   });
 });
 
