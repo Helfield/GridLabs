@@ -1,9 +1,18 @@
-import { engineerTrialAllowance, type ClaimQuota, type ReleaseQuota } from "./db/engineerQuota";
+import { engineerTrialAllowance, type ClaimQuota, type QuotaClaim, type ReleaseQuota } from "./db/engineerQuota";
 
 export const REQUEST_MAX_BYTES = 16 * 1024;
 export const PROVIDER_MAX_BYTES = 64 * 1024;
 export const PROVIDER_TIMEOUT_MS = 15_000;
 export const PLAN_ONLY_READBACK = "Plan only; no game settings changed.";
+// One recording, as base64 in a JSON body: 10 s of 16 kHz mono 16-bit is
+// 320 KB of audio, which is about 427 KB of base64.
+export const VOICE_MAX_BYTES = 600 * 1024;
+export const CLIP_MIN_BYTES = 16_000;
+// 10 s of audio, with room for the WAV header the app wraps it in.
+export const CLIP_MAX_BYTES = 320_064;
+export const ASR_MAX_BYTES = 8 * 1024;
+export const ASR_TIMEOUT_MS = 12_000;
+export const TRANSCRIPT_MAX_CHARS = 500;
 type Four<T> = [T, T, T, T];
 type Eight<T> = [T, T, T, T, T, T, T, T];
 export type FailureReason = "no_key" | "quota_claim" | "quota_exhausted" | "quota_release" | "provider" | "timeout";
@@ -290,9 +299,9 @@ export interface EngineerDeps {
 }
 export type EngineerResult = {
   status: 200 | 400 | 401 | 413 | 429 | 502 | 503 | 504;
-  body: { reply: string; remaining: number; limit: number; plan_only: true } | { code: string; error: string };
+  body: { reply: string; remaining: number | null; limit: number | null; plan_only: true } | { code: string; error: string };
 };
-function unavailable(status: 502 | 503 | 504): EngineerResult {
+function unavailable<S extends 502 | 503 | 504>(status: S): { status: S; body: { code: string; error: string } } {
   return { status, body: { code: "engineer_unavailable", error: "Engineer unavailable. Please try again later." } };
 }
 function toolCalls(value: unknown): ToolCall[] {
@@ -384,7 +393,9 @@ async function providerReply(input: EngineerInput, key: string, deps: EngineerDe
   } finally { stop(); }
 }
 
-export async function handleEngineerRequest(request: Request, userId: number | undefined, deps: EngineerDeps): Promise<EngineerResult> {
+export async function handleEngineerRequest(
+  request: Request, userId: number | undefined, deps: EngineerDeps, unlimited = false,
+): Promise<EngineerResult> {
   if (!Number.isSafeInteger(userId) || (userId as number) < 1) {
     return { status: 401, body: { code: "unauthorized", error: "Authentication required." } };
   }
@@ -397,27 +408,117 @@ export async function handleEngineerRequest(request: Request, userId: number | u
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) { deps.log?.({ reason: "no_key", status: 0, code: "" }); return unavailable(503); }
   const allowance = engineerTrialAllowance(process.env.GRIDLABS_ENGINEER_TRIAL_QUESTIONS);
-  let claim;
-  try { claim = await deps.claimQuota(userId as number, allowance); }
-  catch { deps.log?.({ reason: "quota_claim", status: 0, code: "" }); return unavailable(503); }
-  if (claim === null) {
-    deps.log?.({ reason: "quota_exhausted", status: 429, code: "" });
-    return { status: 429, body: { code: "trial_exhausted", error: "Free strategy questions used up." } };
-  }
-  if (!claim || claim.limit !== allowance || !Number.isInteger(claim.remaining) || claim.remaining < 0 || claim.remaining >= allowance) {
-    deps.log?.({ reason: "quota_claim", status: 0, code: "" });
-    return unavailable(503);
+  let claim: QuotaClaim | null = null;
+  // Staff answer without a count, so testing the engineer never spends the
+  // trial a driver is given.
+  if (!unlimited) {
+    try { claim = await deps.claimQuota(userId as number, allowance); }
+    catch { deps.log?.({ reason: "quota_claim", status: 0, code: "" }); return unavailable(503); }
+    if (claim === null) {
+      deps.log?.({ reason: "quota_exhausted", status: 429, code: "" });
+      return { status: 429, body: { code: "trial_exhausted", error: "Free strategy questions used up." } };
+    }
+    if (claim.limit !== allowance || !Number.isInteger(claim.remaining) || claim.remaining < 0 || claim.remaining >= allowance) {
+      deps.log?.({ reason: "quota_claim", status: 0, code: "" });
+      return unavailable(503);
+    }
   }
   try {
     const reply = await providerReply(input, key, deps);
-    return { status: 200, body: { reply, remaining: claim.remaining, limit: claim.limit, plan_only: true } };
+    return { status: 200, body: { reply, remaining: claim?.remaining ?? null, limit: claim?.limit ?? null, plan_only: true } };
   } catch (error) {
     const timeout = error instanceof Error && error.name === "AbortError";
     const failure = error instanceof ProviderFailure ? error : null;
     deps.log?.({ reason: timeout ? "timeout" : "provider", status: failure?.status ?? 0, code: failure?.code ?? "" });
     // A fault at this end must not cost one of a driver's free questions.
-    try { await deps.releaseQuota(userId as number); }
-    catch { deps.log?.({ reason: "quota_release", status: 0, code: "" }); }
+    if (claim) {
+      try { await deps.releaseQuota(userId as number); }
+      catch { deps.log?.({ reason: "quota_release", status: 0, code: "" }); }
+    }
     return unavailable(timeout ? 504 : 502);
+  }
+}
+
+const BASE64 = /^[A-Za-z0-9+/]{44,}={0,2}$/;
+
+// A recording, decoded and checked as WAV before it is forwarded. The check is
+// cheap and it stops an arbitrary blob being sent to the provider.
+export function validateClip(value: unknown): Buffer {
+  if (typeof value !== "string" || value.length > ((CLIP_MAX_BYTES + 2) / 3 | 0) * 4 + 4 || !BASE64.test(value)) {
+    throw new InvalidInput("Invalid clip");
+  }
+  const bytes = Buffer.from(value, "base64");
+  const ascii = (at: number, text: string) => text.split("").every((char, i) => bytes[at + i] === char.charCodeAt(0));
+  if (bytes.length < CLIP_MIN_BYTES || bytes.length > CLIP_MAX_BYTES || !ascii(0, "RIFF") || !ascii(8, "WAVE")) {
+    throw new InvalidInput("Invalid clip");
+  }
+  return bytes;
+}
+
+export interface VoiceDeps {
+  fetch?: typeof globalThis.fetch;
+  scheduleDeadline?: (abort: () => void, milliseconds: number) => () => void;
+  // Diagnostics only: a reason, an HTTP status and a short provider code.
+  // Never the audio, the words, or the key.
+  log?: (entry: { reason: "no_key" | "provider" | "timeout"; status: number; code: string }) => void;
+}
+export type VoiceResult = {
+  status: 200 | 400 | 401 | 413 | 502 | 503 | 504;
+  body: { transcript: string } | { code: string; error: string };
+};
+
+async function providerTranscript(clip: Buffer, key: string, deps: VoiceDeps, signal: AbortSignal): Promise<string> {
+  const form = new FormData();
+  // A decoded Buffer isn't accepted as a BlobPart, so the bytes go into a plain ArrayBuffer.
+  const buffer = new ArrayBuffer(clip.byteLength);
+  new Uint8Array(buffer).set(clip);
+  form.append("file", new Blob([buffer], { type: "audio/wav" }), "clip.wav");
+  form.append("model", process.env.GRIDLABS_ASR_MODEL?.trim() || "gpt-4o-mini-transcribe");
+  // Drivers speak English with ZA/UK accents; naming the language beats letting
+  // the model guess from one short clip.
+  form.append("language", "en");
+  const response = await (deps.fetch ?? globalThis.fetch)("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST", headers: { Authorization: `Bearer ${key}` }, signal, redirect: "error", body: form,
+  });
+  if (!response.ok) throw new ProviderFailure(response.status, await providerErrorCode(response, signal));
+  const output: unknown = JSON.parse(await boundedText(response, ASR_MAX_BYTES, signal));
+  if (!record(output) || typeof output.text !== "string") throw new ProviderFailure();
+  return output.text.replace(/[\p{Cc}\p{Cf}\p{Cs}]/gu, " ").replace(/\s+/gu, " ").trim().slice(0, TRANSCRIPT_MAX_CHARS);
+}
+
+// Words from a recording, for the desktop radio. This spends no strategy
+// question: a question is only counted when an answer is spoken back, and the
+// radio still answers most readings from local telemetry without asking the AI.
+export async function handleVoiceRequest(request: Request, userId: number | undefined, deps: VoiceDeps): Promise<VoiceResult> {
+  if (!Number.isSafeInteger(userId) || (userId as number) < 1) {
+    return { status: 401, body: { code: "unauthorized", error: "Authentication required." } };
+  }
+  let clip: Buffer;
+  try {
+    const parsed: unknown = JSON.parse(await boundedText(request, VOICE_MAX_BYTES));
+    if (!record(parsed) || Object.keys(parsed).some(key => key !== "audio")) throw new InvalidInput("Invalid body");
+    clip = validateClip(parsed.audio);
+  } catch (error) {
+    return error instanceof BodyTooLarge
+      ? { status: 413, body: { code: "body_too_large", error: "That recording is too long." } }
+      : { status: 400, body: { code: "invalid_clip", error: "That recording couldn't be read." } };
+  }
+  const key = process.env.OPENAI_API_KEY?.trim();
+  if (!key) { deps.log?.({ reason: "no_key", status: 0, code: "" }); return unavailable(503); }
+  const controller = new AbortController();
+  const stop = (deps.scheduleDeadline ?? ((abort, ms) => { const timer = setTimeout(abort, ms); return () => clearTimeout(timer); }))(
+    () => controller.abort(), ASR_TIMEOUT_MS,
+  );
+  try {
+    const transcript = await withAbort(providerTranscript(clip, key, deps, controller.signal), controller.signal);
+    if (!transcript) return { status: 400, body: { code: "no_speech", error: "No words in that recording." } };
+    return { status: 200, body: { transcript } };
+  } catch (error) {
+    const timeout = error instanceof Error && error.name === "AbortError";
+    const failure = error instanceof ProviderFailure ? error : null;
+    deps.log?.({ reason: timeout ? "timeout" : "provider", status: failure?.status ?? 0, code: failure?.code ?? "" });
+    return unavailable(timeout ? 504 : 502);
+  } finally {
+    stop();
   }
 }

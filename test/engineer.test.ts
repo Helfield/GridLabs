@@ -81,14 +81,20 @@ function success(result: EngineerResult) {
 }
 const unavailableBody = { code: "engineer_unavailable", error: "Engineer unavailable. Please try again later." };
 
-test("existing middleware rejects missing/invalid Bearer before routes and sets apiUserId", () => {
+test("existing middleware rejects missing/invalid Bearer before routes and sets the id and role", () => {
   // Static integration check only: do not import the live route or DB client.
   const source = readFileSync(`${WEB}/src/routes/api.ts`, "utf8");
   const middleware = source.slice(source.indexOf('apiRoutes.use("*"'), source.indexOf('// Who am I?'));
   assert.match(middleware, /startsWith\("Bearer "\)/);
   assert.equal((middleware.match(/, 401\)/g) ?? []).length, 2);
-  assert.match(middleware, /c\.set\("apiUserId", user\.id\);\s*await next\(\)/);
+  assert.match(middleware, /c\.set\("apiUserId", user\.id\);\s*c\.set\("apiUserRole", user\.role\);\s*await next\(\)/);
   assert.ok(source.indexOf('apiRoutes.use("*"') < source.indexOf('apiRoutes.post('));
+});
+test("the engineer route decides the count from the account role", () => {
+  const source = readFileSync(`${WEB}/src/routes/api.ts`, "utf8");
+  const route = source.slice(source.indexOf('apiRoutes.post("/engineer"'), source.indexOf('apiRoutes.post("/engineer/voice"'));
+  assert.match(route, /isStaff\(c\.get\("apiUserRole"\)\)/);
+  assert.ok(source.includes('import { isStaff } from "../db/league"'));
 });
 test("unauthorized helper guard never reads a body or calls quota/provider", async () => {
   const h = harness();
@@ -454,6 +460,21 @@ test("a provider fault gives the question back and stays sanitized", async () =>
     assert.equal(h.sent.length, 1);
     assert.deepEqual(h.releases, [7]);
   }
+});
+test("a staff account answers without touching the allowance", async () => {
+  const h = harness();
+  const body = success(await handleEngineerRequest(request(), 7, h.deps, true));
+  assert.equal(h.claims.length, 0);
+  assert.equal(h.releases.length, 0);
+  assert.equal(body.remaining, null);
+  assert.equal(body.limit, null);
+  assert.equal(body.plan_only, true);
+});
+test("a staff fault gives back nothing that was never taken", async () => {
+  const h = harness([new Response("PRIVATE_PROVIDER transcript/key", { status: 500 })]);
+  assert.deepEqual(await handleEngineerRequest(request(), 7, h.deps, true), { status: 502, body: unavailableBody });
+  assert.equal(h.claims.length, 0);
+  assert.equal(h.releases.length, 0);
 });
 test("provider diagnostics carry the upstream status and error code only", async () => {
   const h = harness([new Response(

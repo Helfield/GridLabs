@@ -2,14 +2,15 @@ import { Hono } from "hono";
 import { db } from "../db/client";
 import { users, sessions, referenceLaps, raceResults } from "../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { handleEngineerRequest } from "../engineer";
+import { handleEngineerRequest, handleVoiceRequest } from "../engineer";
 import { createEngineerQuota } from "../db/engineerQuota";
+import { isStaff } from "../db/league";
 import { getAvailableReferenceLapsWithSetupFlag, getReferenceLapForDownload, getSetupForReferenceLap, saveSetup } from "../db/queries";
 import { sanitiseSetup } from "../setups";
 import { syncTrackLeaderboard } from "../discord/leaderboard";
 import { evaluateSessionForPromotion } from "../db/promotions";
 
-type ApiVariables = { apiUserId: number };
+type ApiVariables = { apiUserId: number; apiUserRole: string };
 export const apiRoutes = new Hono<{ Variables: ApiVariables }>();
 
 // Every route here authenticates via "Authorization: Bearer <api_token>"
@@ -25,6 +26,7 @@ apiRoutes.use("*", async (c, next) => {
     return c.json({ error: "Invalid API token." }, 401);
   }
   c.set("apiUserId", user.id);
+  c.set("apiUserRole", user.role);
   await next();
 });
 
@@ -37,6 +39,16 @@ apiRoutes.post("/engineer", async (c) => {
     claimQuota: engineerQuota.claim,
     releaseQuota: engineerQuota.release,
     log: (entry) => console.error("engineer failure:", entry.reason, entry.status || "", entry.code || ""),
+  }, isStaff(c.get("apiUserRole")));
+  return c.json(result.body, result.status);
+});
+
+// Words from one radio recording. Deliberately outside the trial allowance:
+// the app asks for this before it decides whether a question needs the AI at
+// all, and Windows' own recogniser is the reason free-text voice failed.
+apiRoutes.post("/engineer/voice", async (c) => {
+  const result = await handleVoiceRequest(c.req.raw, c.get("apiUserId"), {
+    log: (entry) => console.error("voice failure:", entry.reason, entry.status || "", entry.code || ""),
   });
   return c.json(result.body, result.status);
 });
