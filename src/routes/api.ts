@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { db } from "../db/client";
 import { users, sessions, referenceLaps, raceResults } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { handleEngineerRequest } from "../engineer";
+import { createEngineerQuota } from "../db/engineerQuota";
 import { getAvailableReferenceLapsWithSetupFlag, getReferenceLapForDownload, getSetupForReferenceLap, saveSetup } from "../db/queries";
 import { sanitiseSetup } from "../setups";
 import { syncTrackLeaderboard } from "../discord/leaderboard";
@@ -24,6 +26,19 @@ apiRoutes.use("*", async (c, next) => {
   }
   c.set("apiUserId", user.id);
   await next();
+});
+
+const engineerQuota = createEngineerQuota(
+  (parts, ...values) => db.execute(sql(parts, ...values)),
+);
+
+apiRoutes.post("/engineer", async (c) => {
+  const result = await handleEngineerRequest(c.req.raw, c.get("apiUserId"), {
+    claimQuota: engineerQuota.claim,
+    releaseQuota: engineerQuota.release,
+    log: (entry) => console.error("engineer failure:", entry.reason, entry.status || "", entry.code || ""),
+  });
+  return c.json(result.body, result.status);
 });
 
 // Who am I? Used by the desktop app to confirm a token works and show

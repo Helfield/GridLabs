@@ -125,6 +125,33 @@ export async function ensureSchema(): Promise<void> {
 	"updated_at" timestamp DEFAULT now() NOT NULL
 )`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "league_availability_event_user_idx" ON "league_availability" ("event_id","user_id")`);
+  // Heats (drizzle/0013_league_heats.sql): two new tables plus columns. The
+  // per-round unique index on league_heat_entries is what keeps a driver out of
+  // two heats on the same night, and heat_id on league_results is display only
+  // -- heats score equal points, so the scoring path never reads it.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "league_heats" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"event_id" integer NOT NULL REFERENCES "league_events"("id") ON DELETE CASCADE,
+	"number" integer NOT NULL,
+	"label" text,
+	"created_at" timestamp DEFAULT now() NOT NULL
+)`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "league_heats_event_number_idx" ON "league_heats" ("event_id","number")`);
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "league_heat_entries" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"event_id" integer NOT NULL REFERENCES "league_events"("id") ON DELETE CASCADE,
+	"heat_id" integer NOT NULL REFERENCES "league_heats"("id") ON DELETE CASCADE,
+	"user_id" integer NOT NULL REFERENCES "users"("id"),
+	"manual" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+)`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "league_heat_entries_event_user_idx" ON "league_heat_entries" ("event_id","user_id")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "league_heat_entries_heat_id_idx" ON "league_heat_entries" ("heat_id")`);
+  // SET NULL, not CASCADE: collapsing a split night back to one grid must not
+  // take the results entered under those heats with it.
+  await db.execute(sql`ALTER TABLE "league_results" ADD COLUMN IF NOT EXISTS "heat_id" integer REFERENCES "league_heats"("id") ON DELETE SET NULL`);
+  await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "max_cars_per_heat" integer DEFAULT 26 NOT NULL`);
+  await db.execute(sql`ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "min_cars_per_heat" integer DEFAULT 8 NOT NULL`);
   // Google Calendar connection on the account, and the per-driver record of
   // which calendar event was created for each league race (see src/googleCalendar.ts).
   await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_email" text`);
@@ -164,5 +191,9 @@ export async function ensureSchema(): Promise<void> {
     "channel_id" text PRIMARY KEY NOT NULL,
     "owner_id" text NOT NULL,
     "created_at" timestamp DEFAULT now() NOT NULL
+  )`);
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "engineer_usage" (
+    "user_id" integer PRIMARY KEY NOT NULL REFERENCES "users"("id"),
+    "questions" integer NOT NULL
   )`);
 }

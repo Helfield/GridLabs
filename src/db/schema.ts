@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, jsonb, real, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean, jsonb, real, uniqueIndex, index, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -17,6 +17,13 @@ export const users = pgTable("users", {
   googleRefreshToken: text("google_refresh_token"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   lastLoginAt: timestamp("last_login_at"),
+});
+
+export const engineerUsage = pgTable("engineer_usage", {
+  userId: integer("user_id").primaryKey().references(() => users.id),
+  // Strategy questions charged over the life of the account, not per day, so
+  // reinstalling the app can't reset an allowance.
+  questions: integer("questions").notNull(),
 });
 
 export const referenceLaps = pgTable("reference_laps", {
@@ -148,6 +155,12 @@ export const leagues = pgTable("leagues", {
   // has said nothing by then is not in the field, so this is the deadline the
   // round page shows. See rsvpClosesAt() in leagueRules.ts.
   rsvpClosesHoursBefore: integer("rsvp_closes_hours_before").notNull().default(24),
+  // How big a heat is allowed to be, and how small. The max decides how many
+  // heats a field is split into; the min is what stops it -- a split that would
+  // leave a heat under the min collapses back to one grid instead. See
+  // buildHeats() in leagueRules.ts.
+  maxCarsPerHeat: integer("max_cars_per_heat").notNull().default(26),
+  minCarsPerHeat: integer("min_cars_per_heat").notNull().default(8),
   // Who may register, as the two ends of LICENCE_BANDS. Both null means anyone.
   // A band window rather than a fixed division name so a third tier is data,
   // not a migration. Stored as the band text because that's what registration
@@ -185,6 +198,47 @@ export const leagueEvents = pgTable("league_events", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// One heat of a round that was split because too many drivers said yes. Number
+// is the 1-based order the grid is listed in and gives the default label ("A",
+// "B", ...) when label is left alone. Rounds with no heats are a single grid,
+// which is why nothing here is required by the rest of the league code.
+export const leagueHeats = pgTable(
+  "league_heats",
+  {
+    id: serial("id").primaryKey(),
+    eventId: integer("event_id")
+      .notNull()
+      .references(() => leagueEvents.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    label: text("label"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({ perRound: uniqueIndex("league_heats_event_number_idx").on(t.eventId, t.number) }),
+);
+
+// Who is in which heat. Keyed per driver per ROUND (not per heat) so a driver
+// cannot end up entered in two heats on the same night. manual marks a row the
+// operator placed by hand so a rebuild can leave it where it was put.
+export const leagueHeatEntries = pgTable(
+  "league_heat_entries",
+  {
+    id: serial("id").primaryKey(),
+    eventId: integer("event_id")
+      .notNull()
+      .references(() => leagueEvents.id, { onDelete: "cascade" }),
+    heatId: integer("heat_id")
+      .notNull()
+      .references(() => leagueHeats.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => users.id),
+    manual: boolean("manual").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    perDriver: uniqueIndex("league_heat_entries_event_user_idx").on(t.eventId, t.userId),
+    perHeat: index("league_heat_entries_heat_id_idx").on(t.heatId),
+  }),
+);
+
 export const leagueResults = pgTable(
   "league_results",
   {
@@ -199,6 +253,11 @@ export const leagueResults = pgTable(
     // null on a single-class league, where position carries the points.
     carClass: text("car_class"),
     classPosition: integer("class_position"),
+    // Which heat this result came from, on a night that was split. Record only:
+    // heats score equal points, so no part of the scoring path reads it. SET
+    // NULL if the heat is deleted, which is how a split night collapses back
+    // into one grid without losing results already entered.
+    heatId: integer("heat_id").references(() => leagueHeats.id, { onDelete: "set null" }),
     status: text("status").notNull().default("finished"), // finished | dnf | dns | dsq
     fastestLap: boolean("fastest_lap").notNull().default(false),
     pole: boolean("pole").notNull().default(false),
