@@ -85,7 +85,7 @@ test('actual API middleware and engineer route use only mocked database and prov
     assert.equal(body.limit, TRIAL);
     assert.equal(body.plan_only, true);
     assert.match(body.reply, /17 litres/);
-    assert.match(body.reply, /no game settings changed/);
+    assert.match(body.reply, /Plan only, nothing changed/);
     const toolReply = JSON.parse(sent[1].messages.at(-1).content);
     assert.equal(toolReply.fuel_needed_l, 17);
     assert.equal(execute.mock.callCount(), 1);

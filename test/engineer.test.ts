@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   calculateFuelStrategy, handleEngineerRequest, validateEngineerInput, validateTelemetry, validateFuelArgs,
   REQUEST_MAX_BYTES, PROVIDER_MAX_BYTES, PROVIDER_TIMEOUT_MS, PLAN_ONLY_READBACK,
+  REPLY_MAX_CHARS, REPLY_MAX_WORDS, REPLY_MAX_TOKENS,
   type EngineerDeps, type EngineerResult, type FailureLog,
 } from "../src/engineer";
 import { createEngineerQuota, engineerTrialAllowance, TRIAL_QUESTIONS_DEFAULT, TRIAL_QUESTIONS_MAX, type QuotaExecutor } from "../src/db/engineerQuota";
@@ -250,6 +251,13 @@ test("compound, damage and boolean tuples are strictly typed and bounded", () =>
   ]) assert.throws(() => validateTelemetry(patch));
   assert.equal(validateTelemetry({ parts_detached: null }).parts_detached, null);
 });
+test("the coach's tyre band is a pair of bounded numbers or nothing", () => {
+  assert.deepEqual(validateTelemetry({ tyre_target_c: [85, 95] }).tyre_target_c, [85, 95]);
+  assert.equal(validateTelemetry({}).tyre_target_c, null);
+  for (const bad of [[85], [85, 95, 105], ["85", 95], [85, null], [NaN, 95], [-101, 95], [85, 501], {}]) {
+    assert.throws(() => validateTelemetry({ tyre_target_c: bad }));
+  }
+});
 test("weather typed finite bounds and nullable readings", () => {
   assert.deepEqual(validateTelemetry({ weather: { ambient_temp_c: -100, track_temp_c: 100, raining: 1 } }).weather,
     { ambient_temp_c: -100, track_temp_c: 100, raining: 1 });
@@ -393,7 +401,7 @@ test("provider request uses only approved data, native API protocol, bounded mod
   assert.equal(first.init.method, "POST");
   assert.equal((first.init.headers as any).Authorization, "Bearer draft-test-key");
   assert.equal(first.body.model, "gpt-4.1-mini");
-  assert.equal(first.body.max_tokens, 400);
+  assert.equal(first.body.max_tokens, REPLY_MAX_TOKENS);
   assert.equal(first.body.store, false);
   assert.equal(first.init.redirect, "error");
   assert.deepEqual(first.body.tool_choice, { type: "function", function: { name: "calculate_fuel_strategy" } });
@@ -402,9 +410,11 @@ test("provider request uses only approved data, native API protocol, bounded mod
   assert.equal(data.baseline_fuel_strategy.fuel_needed_l, 17);
   assert.equal(data.telemetry.fuel_l, 8);
   assert.doesNotMatch(JSON.stringify(first.body), /PRIVATE_|draft-test-key|user_id/);
-  assert.match(first.body.messages[0].content, /British English.*80 words/);
+  assert.match(first.body.messages[0].content, /British English.*maximum 20 words/);
+  assert.match(first.body.messages[0].content, /no preamble/);
   assert.match(first.body.messages[0].content, /No game control exists/);
-  assert.match(first.body.messages[0].content, /Never invent tyre optimal ranges/);
+  assert.match(first.body.messages[0].content, /tyre_target_c is the coach's working tyre temperature band/);
+  assert.match(first.body.messages[0].content, /Never invent VE, pit loss/);
   assert.equal(body.remaining, TRIAL_QUESTIONS_DEFAULT - 1);
   assert.equal(body.limit, TRIAL_QUESTIONS_DEFAULT);
   assert.equal(h.releases.length, 0);
@@ -647,16 +657,23 @@ test("tool loops/call budget/duplicate IDs fail closed without extra requests", 
     assert.equal(h.claims.length, 1);
   }
 });
-test("reply is trimmed, capped at 700 characters/80 words, always with fixed readback", async () => {
+test("reply is trimmed, capped at the radio budget, always with fixed readback", async () => {
   for (const text of ["  Fuel estimate ready.\n  ", "x".repeat(5000), "word ".repeat(2000), "é".repeat(3000), "Reply\u202E\u0000text"]) {
     const h = harness([completion(null, [tool()]), completion(text)]);
     const b = success(await handleEngineerRequest(request(), 7, h.deps));
-    assert.ok(b.reply.length <= 700);
-    assert.ok(b.reply.split(/\s+/).length <= 80);
+    assert.ok(b.reply.length <= REPLY_MAX_CHARS);
+    assert.ok(b.reply.split(/\s+/).length <= REPLY_MAX_WORDS);
     assert.equal(b.reply, b.reply.trim());
     assert.ok(b.reply.endsWith(` ${PLAN_ONLY_READBACK}`));
     assert.doesNotMatch(b.reply, /[\u0000\u202E\n]/);
   }
+});
+test("a reply cut to length ends on a whole word, because it is read aloud", async () => {
+  const h = harness([completion(null, [tool()]), completion(Array(30).fill("abcdefgh").join(" "))]);
+  const b = success(await handleEngineerRequest(request(), 7, h.deps));
+  const body = b.reply.slice(0, b.reply.length - PLAN_ONLY_READBACK.length - 1);
+  assert.ok(body.endsWith("abcdefgh"));
+  assert.ok(body.length < REPLY_MAX_CHARS - PLAN_ONLY_READBACK.length - 1);
 });
 
 for (const [configured, expected] of [[undefined, 2], ["", 2], ["bad", 2], ["1.5", 2], ["1e2", 2], ["Infinity", 2],
