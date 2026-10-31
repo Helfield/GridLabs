@@ -21,6 +21,7 @@ import {
   countAttendance,
   heatCount,
   heatLabel,
+  heatLetter,
   type AttendanceCounts,
   type AttendanceStatus,
 } from "../leagueRules";
@@ -563,16 +564,21 @@ function attendancePanel(
  * One driver's move control: the heats they aren't already in, then Move. The
  * heat they're in is left out of the list, so pressing it always changes
  * something rather than re-saving the row that's already there.
+ *
+ * The option text is the bare letter because a four-across card gives the row
+ * 238px, and a name measured unwrapped needs up to 147 of it. "Heat B" in the
+ * dropdown pushed the names onto two lines. The card is headed with its own
+ * heat, so the letters around it read as the other options.
  */
 function heatMoveForm(eventId: number, userId: number, currentHeat: number | null, numbers: number[]): string {
   const options = numbers.filter((n) => n !== currentHeat);
   if (!options.length) return "";
-  return `<form action="/league/event/${eventId}/heats/move" method="post" style="display:inline-flex;gap:6px;align-items:center;margin:0">
+  return `<form action="/league/event/${eventId}/heats/move" method="post" style="display:flex;gap:5px;align-items:center;margin:0;flex:none">
     <input type="hidden" name="userId" value="${userId}">
-    <select name="heat" aria-label="Heat for this driver" style="background:var(--panel);color:var(--text);border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12.5px">
-      ${options.map((n) => `<option value="${n}">${escapeHtml(heatLabel(n))}</option>`).join("")}
+    <select name="heat" aria-label="Move to which heat" title="Move to heat" style="background:var(--panel);color:var(--text);border:1px solid transparent;border-radius:6px;padding:3px 2px;font-size:12px">
+      ${options.map((n) => `<option value="${n}" title="${escapeHtml(heatLabel(n))}">${escapeHtml(heatLetter(n))}</option>`).join("")}
     </select>
-    <button class="linkbtn" type="submit">Move</button>
+    <button class="linkbtn" type="submit" style="font-size:12px">Move</button>
   </form>`;
 }
 
@@ -591,8 +597,8 @@ function heatCard(
   const rows = drivers
     .map(
       (d) => `
-    <li style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-      <span>${
+    <li style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+      <span style="flex:1;min-width:0">${
         // Green, the same colour as the heat name in "You're in Heat B.", so the
         // row you're looking for is the one that matches the line above.
         d.userId === me ? `<span style="color:var(--pb)">${escapeHtml(d.name)}</span>` : escapeHtml(d.name)
@@ -604,13 +610,13 @@ function heatCard(
     )
     .join("");
   return `
-  <div style="flex:1 1 250px;max-width:340px;background:var(--panel-2);border-radius:var(--r-sm);padding:14px 16px">
+  <div style="flex:1 1 240px;background:var(--panel-2);border-radius:var(--r-sm);padding:14px 12px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px">
       <strong>${escapeHtml(title)}</strong>
       <span style="color:var(--dim);font-size:12.5px;flex:1">${escapeHtml(note)}</span>
       ${deleteForm}
     </div>
-    <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:13.5px">${rows}</ul>
+    <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:12.5px">${rows}</ul>
   </div>`;
 }
 
@@ -732,7 +738,7 @@ function heatsPanel(
           }</p>`
         : ""
     }
-    <div style="display:flex;flex-wrap:wrap;gap:14px">${cards}${unplacedCard}</div>
+    <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:14px">${cards}${unplacedCard}</div>
     ${staff && heats.some((h) => h.manual.size) ? `<p class="hint">Names tagged moved were placed by hand, and a rebuild leaves them here.</p>` : ""}
   </div>
 </section>`;

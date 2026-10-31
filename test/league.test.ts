@@ -20,6 +20,7 @@ import {
   buildHeats,
   applyManual,
   heatLabel,
+  heatLetter,
   type AppFinish,
   type ResultRow,
   type HeatSeed,
@@ -397,6 +398,10 @@ describe("splitting a field into heats", () => {
     expect(heatLabel(1)).toBe("Heat A");
     expect(heatLabel(2)).toBe("Heat B");
     expect(heatLabel(3)).toBe("Heat C");
+    expect(heatLetter(1)).toBe("A");
+    expect(heatLetter(26)).toBe("Z");
+    expect(heatLabel(27)).toBe("Heat 27");
+    expect(heatLetter(27)).toBe("27");
   });
 });
 

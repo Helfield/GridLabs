@@ -400,7 +400,11 @@ export function applyManual(allocated: Heat[], manual: Array<{ userId: number; h
 }
 
 /** "Heat A", for the 1-based number a heat carries. */
+/** Just the letter, for a control with no room for the word "Heat". */
+export function heatLetter(number: number): string {
+  return number >= 1 && number <= 26 ? String.fromCharCode(64 + number) : String(number);
+}
+
 export function heatLabel(number: number): string {
-  const letter = number >= 1 && number <= 26 ? String.fromCharCode(64 + number) : String(number);
-  return `Heat ${letter}`;
+  return `Heat ${heatLetter(number)}`;
 }
