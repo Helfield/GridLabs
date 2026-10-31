@@ -1,5 +1,6 @@
 // The league's rules, in one file: which division a driver lands in, what a
-// result is scored on, and what the desktop app's raw upload means as a grid.
+// result is scored on, what the desktop app's raw upload means as a grid, and
+// how a field too big for one grid is split into heats.
 // Nothing here touches the database -- src/leagueRules.ts and src/classes.ts
 // hold no imports from either -- so every case runs without a connection.
 import { test, expect, describe } from "bun:test";
@@ -15,8 +16,12 @@ import {
   rsvpOpen,
   countAttendance,
   rowsFromAppFinish,
+  heatCount,
+  buildHeats,
+  heatLabel,
   type AppFinish,
   type ResultRow,
+  type HeatSeed,
 } from "../src/leagueRules";
 import { scoringClass } from "../src/classes";
 
@@ -261,5 +266,135 @@ describe("marking attendance", () => {
       ],
     );
     expect(counts).toEqual({ in: 1, maybe: 0, out: 0, answered: 1, unmarked: 1 });
+  });
+});
+
+describe("splitting a field into heats", () => {
+  // 26 cars max and 8 min, the settings a new league gets.
+  const SPLIT = { maxCarsPerHeat: 26, minCarsPerHeat: 8 };
+
+  /** A field built from [band, count] pairs, fastest band first. */
+  const field = (...groups: Array<[string, number]>) => {
+    const pool: HeatSeed[] = [];
+    for (const [band, count] of groups) {
+      for (let i = 0; i < count; i++) pool.push({ userId: pool.length + 1, srBand: band, drBand: band });
+    }
+    return pool;
+  };
+  const sizes = (pool: HeatSeed[], split = SPLIT) => buildHeats(pool, split).map((h) => h.userIds.length);
+  const bandsOf = (userId: number, pool: HeatSeed[]) => {
+    const d = pool.find((p) => p.userId === userId)!;
+    const at = effectiveBand(d.srBand, d.drBand);
+    return at < 0 ? null : LICENCE_BANDS[at];
+  };
+  const rankOf = (userId: number, pool: HeatSeed[]) => {
+    const band = bandsOf(userId, pool);
+    return band ? LICENCE_BANDS.indexOf(band) : -1;
+  };
+
+  test("a field that fits is one grid and no heats", () => {
+    expect(sizes(field(["Gold 2", 26]))).toEqual([26]);
+    expect(sizes(field(["Gold 2", 1]))).toEqual([1]);
+    expect(buildHeats([], SPLIT)).toEqual([]);
+  });
+
+  test("one car over the cap splits evenly rather than 26 and 1", () => {
+    expect(sizes(field(["Gold 2", 27]))).toEqual([14, 13]);
+    expect(heatCount(27, SPLIT)).toBe(2);
+  });
+
+  test("the field fills each heat before starting the next", () => {
+    expect(sizes(field(["Gold 2", 52]))).toEqual([26, 26]);
+    expect(sizes(field(["Gold 2", 78]))).toEqual([26, 26, 26]);
+    // 53 doesn't make a 1-car third heat: three heats of 18 is the best split.
+    expect(sizes(field(["Gold 2", 53]))).toEqual([18, 18, 17]);
+  });
+
+  test("a split that would leave a heat under the minimum is refused", () => {
+    // 15 cars at 8 a heat would want 2 heats of 8 and 7, and 7 is under the
+    // floor. One long grid is better than one thin heat.
+    expect(sizes(field(["Gold 2", 15]))).toEqual([15]);
+    expect(heatCount(15, SPLIT)).toBe(1);
+    // The same field with a lower floor does split.
+    expect(sizes(field(["Gold 2", 15]), { maxCarsPerHeat: 8, minCarsPerHeat: 7 })).toEqual([8, 7]);
+    // 30 at 26 a heat wants 2, and 15 each clears the floor easily.
+    expect(sizes(field(["Gold 2", 30]))).toEqual([15, 15]);
+  });
+
+  test("sizes never differ by more than one car", () => {
+    for (const n of [27, 40, 53, 61, 79, 100]) {
+      const got = sizes(field(["Gold 2", n]));
+      expect(Math.max(...got) - Math.min(...got)).toBeLessThanOrEqual(1);
+      expect(got.reduce((a, b) => a + b, 0)).toBe(n);
+      expect(Math.max(...got)).toBeLessThanOrEqual(SPLIT.maxCarsPerHeat);
+    }
+  });
+
+  test("a heat is one ability group, not a mix", () => {
+    const pool = field(["Platinum 1", 15], ["Bronze 1", 15]);
+    const heats = buildHeats(pool, SPLIT);
+    expect(heats).toHaveLength(2);
+    expect(heats[0].userIds.every((u) => bandsOf(u, pool) === "Platinum 1")).toBe(true);
+    expect(heats[1].userIds.every((u) => bandsOf(u, pool) === "Bronze 1")).toBe(true);
+  });
+
+  test("the top heat fills before the quicker band spills into the next", () => {
+    // 20 Platinum and 10 Gold into 2 heats of 15: heat A is all Platinum, and
+    // the 5 Platinum that don't fit race the Golds rather than a heat being
+    // built out of half of each band.
+    const pool = field(["Platinum 1", 20], ["Gold 1", 10]);
+    const heats = buildHeats(pool, SPLIT);
+    expect(heats.map((h) => h.userIds.map((u) => bandsOf(u, pool)))).toEqual([
+      Array(15).fill("Platinum 1"),
+      [...Array(5).fill("Platinum 1"), ...Array(10).fill("Gold 1")],
+    ]);
+  });
+
+  test("a middle band splits between the heats on either side of it", () => {
+    const pool = field(["Platinum 3", 10], ["Gold 2", 10], ["Bronze 2", 10]);
+    // 10 Plat can't fill a 15-car heat, so 5 Gold join them and the other 5
+    // drop to the bottom heat with the 10 Bronzes.
+    expect(buildHeats(pool, SPLIT).map((h) => h.userIds.map((u) => bandsOf(u, pool)))).toEqual([
+      [...Array(10).fill("Platinum 3"), ...Array(5).fill("Gold 2")],
+      [...Array(5).fill("Gold 2"), ...Array(10).fill("Bronze 2")],
+    ]);
+  });
+
+  test("nobody who declared no band ends up at the top", () => {
+    const pool = field(["Platinum 1", 15], ["Bronze 1", 15]);
+    for (const d of pool.slice(15)) {
+      d.srBand = null;
+      d.drBand = null;
+    }
+    const heats = buildHeats(pool, SPLIT);
+    expect(heats[1].userIds.every((u) => bandsOf(u, pool) === null)).toBe(true);
+  });
+
+  test("equal-rated drivers are dealt in rotation, not in blocks off the entry list", () => {
+    // 30 identical drivers. Any 15/15 split is fair on pace, so the one that
+    // isn't "whoever registered first" is the one worth having.
+    const heats = buildHeats(field(["Gold 2", 30]), SPLIT);
+    expect(heats[0].userIds).not.toEqual(Array.from({ length: 15 }, (_, i) => i + 1));
+    expect(heats[0].userIds).toEqual(Array.from({ length: 15 }, (_, i) => i * 2 + 1));
+    expect(heats[1].userIds).toEqual(Array.from({ length: 15 }, (_, i) => i * 2 + 2));
+  });
+
+  test("each heat is listed quickest first", () => {
+    const pool = field(["Platinum 1", 20], ["Gold 2", 15], ["Bronze 1", 10]);
+    for (const heat of buildHeats(pool, SPLIT)) {
+      const ranks = heat.userIds.map((u) => rankOf(u, pool));
+      expect(ranks).toEqual([...ranks].sort((a, b) => b - a));
+    }
+  });
+
+  test("the rebuild is the same call on the same field", () => {
+    const pool = field(["Gold 1", 9], ["Silver 2", 11], ["Bronze 3", 12]);
+    expect(buildHeats(pool, SPLIT)).toEqual(buildHeats([...pool].reverse(), SPLIT));
+  });
+
+  test("heats are lettered from A", () => {
+    expect(heatLabel(1)).toBe("Heat A");
+    expect(heatLabel(2)).toBe("Heat B");
+    expect(heatLabel(3)).toBe("Heat C");
   });
 });

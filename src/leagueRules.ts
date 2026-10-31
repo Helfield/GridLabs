@@ -260,3 +260,117 @@ export function rowsFromAppFinish(app: AppFinish[], onFile: ResultRow[]): Result
   }
   return [...rows.values()];
 }
+
+/** Who the field is being built from, and how big a heat may be. */
+export type HeatSeed = { userId: number; srBand: string | null; drBand: string | null };
+export type HeatSplit = { maxCarsPerHeat: number; minCarsPerHeat: number };
+export type Heat = { number: number; userIds: number[] };
+
+/**
+ * How many heats a field of n cars needs.
+ *
+ * The max sets the starting point and the min pulls it back down, one heat at a
+ * time: 30 cars at 26 a heat wants 2 heats of 15, which clears a floor of 8 and
+ * stays 2. The same field with a floor of 16 doesn't, and goes back to one grid
+ * of 30. Only ever going down, because every heat counts for the championship
+ * and a thin heat is worse for the people stuck in it than a long single grid.
+ */
+export function heatCount(n: number, split: HeatSplit): number {
+  if (n <= 0) return 0;
+  const max = Math.max(1, split.maxCarsPerHeat);
+  const min = Math.max(1, split.minCarsPerHeat);
+  let k = Math.ceil(n / max);
+  while (k > 1 && Math.floor(n / k) < min) k -= 1;
+  return k;
+}
+
+/**
+ * Split the field into ability groups: similar ratings inside each heat, so a
+ * Bronze 2 doesn't spend a race being lapped by Prototypes.
+ *
+ * Everyone is ranked by their league band (the lower of SR and DR, which is how
+ * divisions are decided everywhere else here) and dealt from the top, so heat 1
+ * is the quickest group. Sizes differ by at most one car, the odd driver going
+ * to the top heat, and the whole thing collapses to a single grid when a split
+ * would leave a heat under the minimum.
+ *
+ * The two rules pull against each other where a heat is cut: equal sizes can't
+ * also land on a band line, so a heat straddling a boundary holds the leftover
+ * cars of one band plus the band below it. 30 Platinum and 22 Bronze split into
+ * heats of 26 makes one heat all Platinum and the other 4 Platinum with 22
+ * Bronze. Those are adjacent bands, and the alternative to mixing them is a
+ * 4-car heat. Where the counts land badly a moderator moves people by hand,
+ * which is what `manual` on the entry is for.
+ *
+ * Equal-rated drivers are handed out in rotation across the heats a band is
+ * split between, so a heat doesn't collect one contiguous block of the entry
+ * list: 30 identical drivers over 2 heats means both get every other name
+ * rather than one getting the first fifteen.
+ *
+ * Nothing here is stored and nothing here knows about a round. The caller saves
+ * the result into league_heats / league_heat_entries; a rebuild is this same
+ * call, so it gives the same answer whoever runs it.
+ */
+export function buildHeats(pool: HeatSeed[], split: HeatSplit): Heat[] {
+  const k = heatCount(pool.length, split);
+  if (k === 0) return [];
+  const sizes: number[] = [];
+  const base = Math.floor(pool.length / k);
+  const extra = pool.length % k;
+  for (let i = 0; i < k; i++) sizes.push(base + (i < extra ? 1 : 0));
+
+  const heats: Heat[] = sizes.map((_, i) => ({ number: i + 1, userIds: [] }));
+  const remaining = [...sizes];
+
+  const ranked = [...pool].sort((a, b) => {
+    const diff = effectiveBand(b.srBand, b.drBand) - effectiveBand(a.srBand, a.drBand);
+    return diff !== 0 ? diff : a.userId - b.userId;
+  });
+
+  // Maximal runs of the same band, fastest band first.
+  for (let start = 0; start < ranked.length; ) {
+    const band = effectiveBand(ranked[start].srBand, ranked[start].drBand);
+    let end = start;
+    while (end < ranked.length && effectiveBand(ranked[end].srBand, ranked[end].drBand) === band) end += 1;
+    const group = ranked.slice(start, end);
+
+    // How many of this group each heat gets, filling from the top: heat 1 takes
+    // all it can before heat 2 is touched. That is what makes the heats ability
+    // groups rather than a smear of every band in each one, and it means a group
+    // only reaches a lower heat once every heat above it is full.
+    const take = new Array<number>(k).fill(0);
+    let left = group.length;
+    for (let h = 0; h < k && left > 0; h++) {
+      const n = Math.min(remaining[h], left);
+      take[h] = n;
+      remaining[h] -= n;
+      left -= n;
+    }
+
+    // Hand the group out to those heats one at a time, always to whichever still
+    // wants the most. The counts come out exactly as above, but equal-rated
+    // drivers arrive in rotation instead of in one block off the entry list, so
+    // the top heat doesn't automatically collect whoever registered first.
+    const wants = [...take];
+    for (const driver of group) {
+      let best = -1;
+      for (let h = 0; h < k; h++) if (wants[h] > 0 && (best < 0 || wants[h] > wants[best])) best = h;
+      if (best < 0) break;
+      heats[best].userIds.push(driver.userId);
+      wants[best] -= 1;
+    }
+    start = end;
+  }
+
+  // Each heat listed quickest-first, the same order the pool was dealt from.
+  const rankOf = new Map(ranked.map((d, i) => [d.userId, i]));
+  return heats
+    .filter((h) => h.userIds.length > 0)
+    .map((h) => ({ ...h, userIds: [...h.userIds].sort((a, b) => rankOf.get(a)! - rankOf.get(b)!) }));
+}
+
+/** "Heat A", for the 1-based number a heat carries. */
+export function heatLabel(number: number): string {
+  const letter = number >= 1 && number <= 26 ? String.fromCharCode(64 + number) : String(number);
+  return `Heat ${letter}`;
+}
