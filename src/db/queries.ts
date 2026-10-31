@@ -374,6 +374,12 @@ export async function getPublicLapsForTrack(track: string) {
  * often have no class at all, hence the keyword sweep as a second try,
  * and null as an honest third answer rather than a guess.
  *
+ * The token comes back canonical, so the sim's LMP2_ELMS reads as LMP2 and
+ * HYPER / LMH / LMDh read as HYPERCAR. Every class decision on the site goes
+ * through here -- the boards, the library's grouping, promotion, and which
+ * reference lap a driver is measured against -- so one class means one board
+ * everywhere and the standings can't disagree with the lap times.
+ *
  * Exported (was module-private) so db/promotions.ts can reuse the exact
  * same class-matching this file already established, rather than a
  * second definition of "same class" drifting from this one.
@@ -383,13 +389,13 @@ export function carClass(car: string | null | undefined): string | null {
 
   const parts = car.split(/[\u00b7|]/);
   if (parts.length > 1 && parts[0].trim()) {
-    return parts[0].trim().toUpperCase();
+    return canonicalClass(parts[0].trim().toUpperCase());
   }
 
   const known = ["HYPERCAR", "LMDH", "LMH", "LMP2", "LMP3", "GTE", "GT3", "GT4"];
   const upper = car.toUpperCase();
   for (const name of known) {
-    if (upper.includes(name)) return name;
+    if (upper.includes(name)) return canonicalClass(name);
   }
   return null;
 }
@@ -415,7 +421,7 @@ export function sameClass(a: string | null | undefined, b: string | null | undef
 
 // Class naming/ordering lives in ../classes (pure, so views can use it
 // too); re-exported here so the rest of the data layer keeps one import.
-import { UNCLASSIFIED, classRank, classDisplayName } from "../classes";
+import { UNCLASSIFIED, canonicalClass, classRank, classDisplayName } from "../classes";
 export { UNCLASSIFIED, classRank, classDisplayName };
 
 export type TrackProgress = {
