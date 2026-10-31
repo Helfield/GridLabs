@@ -12,6 +12,7 @@ import { sessionRoutes } from "./routes/session";
 import { libraryRoutes } from "./routes/library";
 import { downloadRoutes } from "./routes/download";
 import { leagueRoutes } from "./routes/league";
+import { versionRoutes } from "./routes/version";
 import { leaderboardEnabled, syncAllLeaderboards } from "./discord/leaderboard";
 import { promoteBestLaps } from "./db/promotions";
 import { ensureSchema } from "./db/ensure-schema";
@@ -91,6 +92,9 @@ app.route("/session", sessionRoutes);
 app.route("/library", libraryRoutes);
 app.route("/download", downloadRoutes);
 app.route("/league", leagueRoutes);
+
+// No auth, no db: which commit and branch this process booted from.
+app.route("/version", versionRoutes);
 
 app.get("/", (c) => {
   return c.html(landingPage(DISCORD_INVITE_URL));
