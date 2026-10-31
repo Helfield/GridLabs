@@ -1,5 +1,5 @@
 import { layout, escapeHtml, type NavUser } from "./layout";
-import { emojiDisplay, type GuildChannel, type GuildEmoji, type GuildRole } from "../discord/bot-api";
+import { botMissingNames, emojiDisplay, type GuildChannel, type GuildEmoji, type GuildRole } from "../discord/bot-api";
 
 type Nav = NonNullable<NavUser>;
 
@@ -100,7 +100,7 @@ export function discordPage(
 
   const setup = opts.enabled
     ? ""
-    : `<p class="hint" style="color:var(--warn)">The bot is off — set DISCORD_BOT_TOKEN in Railway's Variables (and redeploy) to turn it on.</p>`;
+    : `<p class="hint" style="color:var(--warn)">The bot is off: ${botMissingNames()} not set in Railway's Variables. Redeploy after adding it.</p>`;
 
   const body = `
 ${CSS}

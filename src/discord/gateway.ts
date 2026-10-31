@@ -1,4 +1,4 @@
-import { botEnabled, DiscordApiError, guildId } from "./bot-api";
+import { botEnabled, botMissingNames, DiscordApiError, guildId } from "./bot-api";
 import { findRoleFor, giveRole, memberRoleIds, otherChoicesOnMessage, removeMemberReaction, takeRole } from "./reaction-roles";
 import { onGuildCreate, onVoiceState, type VoiceState } from "./voice";
 
@@ -45,7 +45,7 @@ let ackReceived = true;
 
 export function startBot(): void {
   if (!botEnabled()) {
-    console.log("Discord bot: off (DISCORD_BOT_TOKEN not set).");
+    console.log(`Discord bot: off (${botMissingNames()} not set).`);
     return;
   }
   connect();

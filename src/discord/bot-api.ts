@@ -1,7 +1,20 @@
 const DISCORD_API = "https://discord.com/api/v10";
 
+const BOT_VARIABLES = ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID"];
+
+// A blank value counts as missing, and every missing name is listed, so an
+// "off" never sends someone to set the variable that was already there.
+function missingBotVariables(): string[] {
+  return BOT_VARIABLES.filter((name) => !process.env[name]?.trim());
+}
+
 export function botEnabled(): boolean {
-  return Boolean(process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID);
+  return missingBotVariables().length === 0;
+}
+
+/** Which Railway variables to name in an "off" message. Only meaningful when botEnabled() is false. */
+export function botMissingNames(): string {
+  return missingBotVariables().join(" and ");
 }
 
 export function guildId(): string {

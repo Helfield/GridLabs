@@ -209,6 +209,7 @@ const numberBounds: [string, number, number, boolean, boolean?][] = [
   ["session_time_left_s", 0, 604800, false], ["fuel_l", 0, 500, false], ["fuel_capacity_l", 0, 500, false],
   ["sample_laps", 0, 5, true], ["litres_per_lap", 0, 100, false, true], ["average_lap_s", 0, 10000, false, true],
   ["place", 1, 200, true], ["class_place", 1, 200, true], ["gap_ahead_s", 0, 10000, false], ["gap_behind_s", 0, 10000, false],
+  ["gap_leader_s", 0, 10000, false], ["laps_behind_leader", 0, 200, true],
 ];
 for (const [key, min, max, integer, exclusive] of numberBounds) {
   test(`telemetry finite and range bounds: ${key}`, () => {

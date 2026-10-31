@@ -13,7 +13,7 @@ import { coachDashboardPage, driverDetailPage, referenceLapsPage } from "../view
 import { leaderboardEnabled, syncAllLeaderboards } from "../discord/leaderboard";
 import { promoteBestLaps } from "../db/promotions";
 import { discordEditPage, discordPage } from "../views/coach-discord";
-import { botEnabled, botFetch, DiscordApiError, guildId, listAssignableRoles, listChannelsByKind, listGuildEmojis, listTextChannels, parseEmoji } from "../discord/bot-api";
+import { botEnabled, botFetch, botMissingNames, DiscordApiError, guildId, listAssignableRoles, listChannelsByKind, listGuildEmojis, listTextChannels, parseEmoji } from "../discord/bot-api";
 import { clearSetting, getSetting, setSetting } from "../discord/settings";
 import { LOBBY_SETTING } from "../discord/voice";
 import { attachToMessage, createPanel, deleteMapping, deleteMessageMappings, emojisOnMessage, getPanel, listReactionRoles, mappingsForMessage, MAX_REACTIONS_PER_MESSAGE, syncMessage, type RolePair } from "../discord/reaction-roles";
@@ -70,7 +70,7 @@ coachRoutes.get("/reference-laps", async (c) => {
       : synced === undefined
         ? null
         : synced === "off"
-          ? "Discord leaderboard is off -- set DISCORD_LEADERBOARD_WEBHOOK_URL in Railway's Variables to turn it on."
+          ? "Discord leaderboard is off: DISCORD_LEADERBOARD_WEBHOOK_URL not set in Railway's Variables."
           : `Leaderboard re-posted (${synced} track${synced === "1" ? "" : "s"} on the board).`;
   return c.html(referenceLapsPage(user, laps, { enabled: leaderboardEnabled(), notice }));
 });
@@ -234,7 +234,7 @@ coachRoutes.post("/discord/panel", async (c) => {
   const many = (v: unknown) => (Array.isArray(v) ? v : v === undefined ? [] : [v]).map(one);
   const fail = (msg: string) => c.redirect(`/coach/discord?error=${encodeURIComponent(msg)}`);
 
-  if (!botEnabled()) return fail("The bot is off.");
+  if (!botEnabled()) return fail(`The bot is off: ${botMissingNames()} not set.`);
   const channelId = one(body.channelId);
   const messageId = one(body.messageId);
   if (!/^\d+$/.test(channelId)) return fail("Pick a channel.");
@@ -314,7 +314,7 @@ coachRoutes.get("/discord/message/:messageId", async (c) => {
 coachRoutes.post("/discord/message/:messageId", async (c) => {
   const messageId = c.req.param("messageId");
   if (!/^\d+$/.test(messageId)) return c.redirect("/coach/discord");
-  if (!botEnabled()) return editPage(c, messageId, { error: "The bot is off." });
+  if (!botEnabled()) return editPage(c, messageId, { error: `The bot is off: ${botMissingNames()} not set.` });
   const body = (await c.req.parseBody({ all: true })) as FormBody;
   const read = await readPairs(body);
   if ("error" in read) return editPage(c, messageId, { error: read.error });
@@ -347,7 +347,7 @@ coachRoutes.post("/discord/voice", async (c) => {
   const one = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const done = (msg: string) => c.redirect(`/coach/discord?voice=${encodeURIComponent(msg)}`);
   const fail = (msg: string) => c.redirect(`/coach/discord?error=${encodeURIComponent(msg)}`);
-  if (!botEnabled()) return fail("The bot is off.");
+  if (!botEnabled()) return fail(`The bot is off: ${botMissingNames()} not set.`);
 
   const action = one(body.action);
   if (action === "off") {

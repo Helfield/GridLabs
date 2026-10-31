@@ -52,6 +52,11 @@ export interface Telemetry {
   class_place: number | null;
   gap_ahead_s: number | null;
   gap_behind_s: number | null;
+  // Gap to the race leader off the player's own timing row. gap_ahead_s is
+  // whoever sits one place up, which is a car being lapped once the driver is
+  // down on laps, so the two are not the same number.
+  gap_leader_s: number | null;
+  laps_behind_leader: number | null;
   weather: { ambient_temp_c: number | null; track_temp_c: number | null; raining: number | null } | null;
   dent_severity: Eight<number> | null;
   wheel_flat: Four<boolean> | null;
@@ -115,6 +120,7 @@ const telemetryFields: Record<keyof Telemetry, Validator> = {
   tyre_target_c: nullable(tuple(2, numeric(-100, 500))),
   place: nullable(numeric(1, 200, true)), class_place: nullable(numeric(1, 200, true)),
   gap_ahead_s: nullable(numeric(0, 10000)), gap_behind_s: nullable(numeric(0, 10000)),
+  gap_leader_s: nullable(numeric(0, 10000)), laps_behind_leader: nullable(numeric(0, 200, true)),
   weather: nullable(weather), dent_severity: nullable(tuple(8, numeric(0, 3, true))),
   wheel_flat: nullable(tuple(4, bool)), wheel_detached: nullable(tuple(4, bool)),
   parts_detached: nullable(bool), overheating: nullable(bool),
