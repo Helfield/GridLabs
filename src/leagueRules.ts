@@ -369,6 +369,36 @@ export function buildHeats(pool: HeatSeed[], split: HeatSplit): Heat[] {
     .map((h) => ({ ...h, userIds: [...h.userIds].sort((a, b) => rankOf.get(a)! - rankOf.get(b)!) }));
 }
 
+/**
+ * Put back the drivers a moderator placed by hand, once the allocator has run.
+ *
+ * buildHeats() only knows the field and the bands, so a rebuild on its own would
+ * undo every override made when it got one wrong. This runs on its result rather
+ * than on the pool, because a hand placement must not change how many heats there
+ * are or who else the allocator picked: the driver is lifted out of wherever it
+ * put them and dropped at the bottom of the heat they were moved to.
+ *
+ * A target heat the new field no longer needs sends them to the highest one below
+ * it, and a driver who is no longer in the field is left out, because the smaller
+ * field is what it is. Numbers are re-assigned afterwards, since a move can empty
+ * a heat and a heat nobody is in isn't a race.
+ */
+export function applyManual(allocated: Heat[], manual: Array<{ userId: number; heatNumber: number }>): Heat[] {
+  if (!allocated.length || !manual.length) return allocated;
+  const order = allocated.map((h) => h.number).sort((a, b) => a - b);
+  const groups = new Map(allocated.map((h) => [h.number, [...h.userIds]]));
+  for (const move of manual) {
+    const from = order.find((n) => groups.get(n)!.includes(move.userId));
+    if (from === undefined) continue;
+    let target = order[0];
+    for (const n of order) if (n <= move.heatNumber) target = n;
+    if (target === from) continue;
+    groups.set(from, groups.get(from)!.filter((u) => u !== move.userId));
+    groups.get(target)!.push(move.userId);
+  }
+  return order.filter((n) => groups.get(n)!.length > 0).map((n, i) => ({ number: i + 1, userIds: groups.get(n)! }));
+}
+
 /** "Heat A", for the 1-based number a heat carries. */
 export function heatLabel(number: number): string {
   const letter = number >= 1 && number <= 26 ? String.fromCharCode(64 + number) : String(number);

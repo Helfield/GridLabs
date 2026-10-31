@@ -18,6 +18,7 @@ import {
   rowsFromAppFinish,
   heatCount,
   buildHeats,
+  applyManual,
   heatLabel,
   type AppFinish,
   type ResultRow,
@@ -396,5 +397,59 @@ describe("splitting a field into heats", () => {
     expect(heatLabel(1)).toBe("Heat A");
     expect(heatLabel(2)).toBe("Heat B");
     expect(heatLabel(3)).toBe("Heat C");
+  });
+});
+
+describe("moving drivers between heats by hand", () => {
+  const SPLIT = { maxCarsPerHeat: 26, minCarsPerHeat: 8 };
+  const pool: HeatSeed[] = Array.from({ length: 30 }, (_, i) => ({ userId: i + 1, srBand: "Gold 2", drBand: "Gold 2" }));
+  const allocated = buildHeats(pool, SPLIT);
+
+  test("a field nobody has touched is handed back as it was", () => {
+    expect(applyManual(allocated, [])).toEqual(allocated);
+  });
+
+  test("a moved driver joins the bottom of the heat they were put in", () => {
+    // Bottom, not sorted in: the allocator already ordered the heat by pace, and
+    // a moderator's move says nothing about this driver's rating.
+    const moved = applyManual(allocated, [{ userId: 1, heatNumber: 2 }]);
+    expect(moved[0].userIds).not.toContain(1);
+    expect(moved[1].userIds).toContain(1);
+    expect(moved[1].userIds[moved[1].userIds.length - 1]).toBe(1);
+    expect(moved.map((h) => h.userIds.length)).toEqual([14, 16]);
+  });
+
+  test("moving a driver into the heat they are already in changes nothing", () => {
+    expect(applyManual(allocated, [{ userId: 1, heatNumber: 1 }])).toEqual(allocated);
+  });
+
+  test("a heat number past the last heat means the last one", () => {
+    // The panel offers the heats that exist, so an out-of-range number is an old
+    // bookmark or a race against a rebuild. Placing the driver somewhere beats
+    // an error that leaves them nowhere.
+    const moved = applyManual(allocated, [{ userId: 1, heatNumber: 9 }]);
+    expect(moved.map((h) => h.userIds.length)).toEqual([14, 16]);
+    expect(moved[1].userIds[moved[1].userIds.length - 1]).toBe(1);
+  });
+
+  test("the last driver leaving a heat takes the heat with them", () => {
+    const one = [{ number: 1, userIds: [1, 2] }, { number: 2, userIds: [3] }];
+    expect(applyManual(one, [{ userId: 3, heatNumber: 1 }])).toEqual([{ number: 1, userIds: [1, 2, 3] }]);
+  });
+
+  test("a driver who is no longer in the field is not put anywhere", () => {
+    // Somebody who withdrew since the move is recorded. RebuildHeats filters
+    // these out before calling, and this is the same answer if it doesn't.
+    expect(applyManual(allocated, [{ userId: 999, heatNumber: 2 }])).toEqual(allocated);
+  });
+
+  test("several moves are applied in the order they were made", () => {
+    const moved = applyManual(allocated, [
+      { userId: 1, heatNumber: 2 },
+      { userId: 2, heatNumber: 1 },
+    ]);
+    expect(moved[0].userIds).toEqual([3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 2]);
+    expect(moved[1].userIds).toEqual([4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 1]);
+    expect(moved.map((h) => h.userIds.length)).toEqual([15, 15]);
   });
 });

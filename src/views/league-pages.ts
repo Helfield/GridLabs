@@ -19,9 +19,12 @@ import {
   rsvpClosesAt,
   rsvpOpen,
   countAttendance,
+  heatCount,
+  heatLabel,
   type AttendanceCounts,
   type AttendanceStatus,
 } from "../leagueRules";
+import type { StoredHeat } from "../db/heats";
 import { LEAGUE_CLASSES } from "../classes";
 
 type Nav = NonNullable<NavUser>;
@@ -556,6 +559,185 @@ function attendancePanel(
 </section>`;
 }
 
+/**
+ * One driver's move control: the heats they aren't already in, then Move. The
+ * heat they're in is left out of the list, so pressing it always changes
+ * something rather than re-saving the row that's already there.
+ */
+function heatMoveForm(eventId: number, userId: number, currentHeat: number | null, numbers: number[]): string {
+  const options = numbers.filter((n) => n !== currentHeat);
+  if (!options.length) return "";
+  return `<form action="/league/event/${eventId}/heats/move" method="post" style="display:inline-flex;gap:6px;align-items:center;margin:0">
+    <input type="hidden" name="userId" value="${userId}">
+    <select name="heat" aria-label="Heat for this driver" style="background:var(--panel);color:var(--text);border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:12.5px">
+      ${options.map((n) => `<option value="${n}">${escapeHtml(heatLabel(n))}</option>`).join("")}
+    </select>
+    <button class="linkbtn" type="submit">Move</button>
+  </form>`;
+}
+
+/** A card of names, one per driver, with the move control when staff are looking. */
+function heatCard(
+  title: string,
+  drivers: Array<{ userId: number; name: string; manual: boolean; answer: AttendanceStatus | null }>,
+  note: string,
+  eventId: number,
+  numbers: number[],
+  currentHeat: number | null,
+  me: number,
+  staff: boolean,
+  deleteForm = "",
+): string {
+  const rows = drivers
+    .map(
+      (d) => `
+    <li style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span>${
+        // Green, the same colour as the heat name in "You're in Heat B.", so the
+        // row you're looking for is the one that matches the line above.
+        d.userId === me ? `<span style="color:var(--pb)">${escapeHtml(d.name)}</span>` : escapeHtml(d.name)
+      }${
+        d.manual ? ` <span class="tag">moved</span>` : ""
+      }${!staff && d.answer === "out" ? ` <span class="tag">not coming</span>` : ""}</span>
+      ${staff ? heatMoveForm(eventId, d.userId, currentHeat, numbers) : ""}
+    </li>`,
+    )
+    .join("");
+  return `
+  <div style="flex:1 1 250px;max-width:340px;background:var(--panel-2);border-radius:var(--r-sm);padding:14px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px">
+      <strong>${escapeHtml(title)}</strong>
+      <span style="color:var(--dim);font-size:12.5px;flex:1">${escapeHtml(note)}</span>
+      ${deleteForm}
+    </div>
+    <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:13.5px">${rows}</ul>
+  </div>`;
+}
+
+/**
+ * The heats for a round too big for one grid. The organiser builds them from who
+ * said they are coming, then fixes what the allocator got wrong by hand, usually
+ * on a phone in the pit: every control is its own form, so there is no save step
+ * to forget. Drivers see the same cards without the controls.
+ */
+function heatsPanel(
+  user: Nav,
+  userId: number,
+  league: League,
+  event: LeagueEvent,
+  entries: Entry[],
+  attendance: Attendance[],
+  heats: StoredHeat[],
+  fieldCount: number,
+): string {
+  if (!entries.length) return "";
+  const staff = isStaff(user);
+  const answer = new Map(attendance.map((a) => [a.userId, a.status]));
+  const names = new Map(entries.map((e) => [e.userId, e.name]));
+  const nameOf = (userId: number) => names.get(userId) ?? `Driver ${userId}`;
+  const split = { maxCarsPerHeat: league.maxCarsPerHeat, minCarsPerHeat: league.minCarsPerHeat };
+  const wouldBe = heatCount(fieldCount, split);
+  const numbers = heats.map((h) => h.number);
+
+  const controls = staff
+    ? `
+    <form action="/league/event/${event.id}/heats/build" method="post" style="margin:0 0 14px">
+      <button class="btn btn--ghost btn--sm" type="submit">${heats.length ? "Rebuild heats" : "Build heats"}</button>
+      <span class="hint" style="margin:0 0 0 10px;display:inline-block">${
+        wouldBe > 1
+          ? `${fieldCount} of ${entries.length} said coming. That makes ${wouldBe} heats at ${league.maxCarsPerHeat} a heat.`
+          : `${fieldCount} of ${entries.length} said coming, which fits one grid of ${league.maxCarsPerHeat}. A build then clears the heats.`
+      }</span>
+    </form>${
+      heats.length
+        ? `<p class="hint" style="margin:0 0 14px">A rebuild splits the field again and leaves anyone you moved by hand where you put them.</p>`
+        : ""
+    }`
+    : "";
+
+  if (!heats.length) {
+    // Two different reasons there are no heats: the field fits one grid, or it
+    // doesn't and nobody has pressed build yet. Telling a 23 car field it is
+    // racing one race would be wrong in half an hour.
+    const oneGrid = wouldBe <= 1;
+    const driverNote = oneGrid
+      ? `One race this round.${fieldCount ? ` The field is ${fieldCount} car${fieldCount === 1 ? "" : "s"}.` : ""}`
+      : `This round is ${fieldCount} cars, which is more than one grid of ${league.maxCarsPerHeat}. A moderator will split it into heats closer to the start.`;
+    return `
+<section class="panel" style="margin-top:28px">
+  <div class="panel__head"><h2>Heats</h2><span class="tag">${oneGrid ? "one grid" : "not built yet"}</span></div>
+  <div class="panel__body">
+    ${controls}
+    ${staff ? "" : `<p class="hint" style="margin:0">${escapeHtml(driverNote)}</p>`}
+  </div>
+</section>`;
+  }
+
+  const placed = new Set(heats.flatMap((h) => h.userIds));
+  // Anyone the field has that no heat holds: nobody turned up for, someone
+  // deleted with their heat, a driver who said not sure and then arrived.
+  const unplaced = entries
+    .filter((e) => !placed.has(e.userId))
+    .sort((a, b) => {
+      const rank = (s: AttendanceStatus | null) => (s === "in" ? 0 : s === "out" ? 2 : 1);
+      return rank(answer.get(a.userId) ?? null) - rank(answer.get(b.userId) ?? null) || a.name.localeCompare(b.name);
+    });
+
+  const cards = heats
+    .map((heat) =>
+      heatCard(
+        heat.label || heatLabel(heat.number),
+        heat.userIds.map((userId) => ({ userId, name: nameOf(userId), manual: heat.manual.has(userId), answer: answer.get(userId) ?? null })),
+        `${heat.userIds.length} car${heat.userIds.length === 1 ? "" : "s"}`,
+        event.id,
+        numbers,
+        heat.number,
+        userId,
+        staff,
+        staff
+          ? `<form action="/league/event/${event.id}/heats/${heat.id}/delete" method="post" style="margin:0" onsubmit="return confirm('Delete ${
+              escapeHtml(heatLabel(heat.number))
+            } and the ${heat.userIds.length} drivers in it?')">
+      <button class="linkbtn" type="submit" style="color:var(--warn)">Delete</button></form>`
+          : "",
+      ),
+    )
+    .join("");
+
+  const unplacedCard =
+    staff && unplaced.length
+      ? heatCard(
+          "Not in a heat",
+          unplaced.map((e) => ({ userId: e.userId, name: e.name, manual: false, answer: answer.get(e.userId) ?? null })),
+          `${unplaced.length} driver${unplaced.length === 1 ? "" : "s"}`,
+          event.id,
+          numbers,
+          null,
+          userId,
+          true,
+        )
+      : "";
+
+  const missing = staff ? "" : heats.find((h) => h.userIds.includes(userId))?.number ?? null;
+
+  return `
+<section class="panel" style="margin-top:28px">
+  <div class="panel__head"><h2>Heats</h2><span class="tag">${heats.length} heats · ${placed.size} placed</span></div>
+  <div class="panel__body">
+    ${controls}
+    ${
+      !staff
+        ? `<p style="margin:0 0 14px;color:var(--muted)">${
+            missing ? `You're in <strong style="color:var(--pb)">${escapeHtml(heatLabel(missing))}</strong>.` : "You're not in a heat yet. Ask a moderator."
+          }</p>`
+        : ""
+    }
+    <div style="display:flex;flex-wrap:wrap;gap:14px">${cards}${unplacedCard}</div>
+    ${staff && heats.some((h) => h.manual.size) ? `<p class="hint">Names tagged moved were placed by hand, and a rebuild leaves them here.</p>` : ""}
+  </div>
+</section>`;
+}
+
 export function eventPage(
   user: Nav,
   ctx: {
@@ -568,6 +750,11 @@ export function eventPage(
     registered: boolean;
     /** The signed-in driver's own answer for this round, if they have one. */
     myAttendance: AttendanceStatus | null;
+    /** This round's heats, and how many registered drivers said they are coming. */
+    heats: StoredHeat[];
+    fieldCount: number;
+    /** The signed-in driver's id, so their own name stands out in a heat list. */
+    userId: number;
     now: Date;
     msg?: string | null;
     error?: string | null;
@@ -696,6 +883,7 @@ ${notice(ctx.msg)}${notice(ctx.error, "error")}
   ${resultsTable}
 </section>
 ${attendancePanel(user, league, event, entries, attendance, ctx.registered, ctx.myAttendance, ctx.now)}
+${heatsPanel(user, ctx.userId, league, event, entries, attendance, ctx.heats, ctx.fieldCount)}
 ${entryForm}
 ${editEvent}`;
   return layout(event.name, body, user, { wide: true, wallpaper: "spapark" });

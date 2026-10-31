@@ -37,10 +37,12 @@ import {
   ATTENDANCE_STATUSES,
   countAttendance,
   rsvpOpen,
+  heatLabel,
   type AttendanceCounts,
   type AttendanceStatus,
   type ResultRow,
 } from "../leagueRules";
+import { deleteHeat, getHeatField, listHeats, moveHeatDriver, rebuildHeats } from "../db/heats";
 import { SCORING_CLASSES } from "../classes";
 import { calendarEnabled, authorizeUrl, exchangeCode } from "../googleCalendar";
 import { leagueIndexPage, leaguePage, eventPage, staffPage } from "../views/league-pages";
@@ -184,7 +186,12 @@ leagueRoutes.get("/event/:eventId", async (c) => {
   if (!league) return c.text("League not found.", 404);
   const entries = await getEntries(league.id);
   const results = await getEventResults(event.id);
-  const [attendance, registered] = await Promise.all([getAttendance(event.id), isRegistered(league.id, user.id)]);
+  const [attendance, registered, heats, field] = await Promise.all([
+    getAttendance(event.id),
+    isRegistered(league.id, user.id),
+    listHeats(event.id),
+    getHeatField(league.id, event.id),
+  ]);
   const myAttendance = registered ? attendance.find((a) => a.userId === user.id)?.status ?? null : null;
   // The app cross-check is for the organisers only -- it names drivers who
   // might simply not have the app, so it isn't shown to everyone.
@@ -199,6 +206,9 @@ leagueRoutes.get("/event/:eventId", async (c) => {
       appRecords,
       registered,
       myAttendance,
+      heats,
+      fieldCount: field.length,
+      userId: user.id,
       now: new Date(),
       msg: c.req.query("msg"),
       error: c.req.query("error"),
@@ -310,6 +320,72 @@ leagueRoutes.post("/event/:eventId/fill-from-app", async (c) => {
       "msg",
       `Filled ${filled} driver${filled === 1 ? "" : "s"} from the app, ${unmatched} with no app data left as they were. Check the places are the race you ran, then save any corrections.`,
     ),
+  );
+});
+
+leagueRoutes.post("/event/:eventId/heats/build", async (c) => {
+  const user = await staffUser(c);
+  if (!user) return c.text("Not found.", 404);
+  const event = await getEvent(Number(c.req.param("eventId")));
+  if (!event) return c.text("Event not found.", 404);
+  const league = await getLeague(event.leagueId);
+  if (!league) return c.text("League not found.", 404);
+  const path = `/league/event/${event.id}`;
+
+  const { heats, field } = await rebuildHeats(league, event);
+  if (!heats.length) {
+    return c.redirect(
+      back(
+        path,
+        "msg",
+        field
+          ? `${field} driver${field === 1 ? "" : "s"} said they are coming, which fits one grid of up to ${league.maxCarsPerHeat}, so there are no heats. Any heats from before were cleared.`
+          : "Nobody has said they are coming yet, so there is no field to split.",
+      ),
+    );
+  }
+  return c.redirect(
+    back(path, "msg", `Built ${heats.length} heats from the ${field} drivers who said they are coming. Anyone you had moved by hand stays where you put them.`),
+  );
+});
+
+leagueRoutes.post("/event/:eventId/heats/move", async (c) => {
+  const user = await staffUser(c);
+  if (!user) return c.text("Not found.", 404);
+  const event = await getEvent(Number(c.req.param("eventId")));
+  if (!event) return c.text("Event not found.", 404);
+  const league = await getLeague(event.leagueId);
+  if (!league) return c.text("League not found.", 404);
+  const path = `/league/event/${event.id}`;
+
+  const body = await c.req.parseBody();
+  const driverId = Number(body.userId);
+  const heatNumber = Number(body.heat);
+  if (!Number.isInteger(driverId) || !Number.isInteger(heatNumber) || heatNumber < 1)
+    return c.redirect(back(path, "error", "Pick a driver and a heat."));
+
+  const error = await moveHeatDriver(league, event, driverId, heatNumber);
+  if (error) return c.redirect(back(path, "error", error));
+  const driver = await getUserById(driverId);
+  return c.redirect(
+    back(path, "msg", `Moved ${driver?.name ?? "that driver"} to ${heatLabel(heatNumber)}. A rebuilt field leaves them here.`),
+  );
+});
+
+leagueRoutes.post("/event/:eventId/heats/:heatId/delete", async (c) => {
+  const user = await staffUser(c);
+  if (!user) return c.text("Not found.", 404);
+  const event = await getEvent(Number(c.req.param("eventId")));
+  if (!event) return c.text("Event not found.", 404);
+  const path = `/league/event/${event.id}`;
+
+  const removed = await deleteHeat(event, Number(c.req.param("heatId")));
+  if (!removed) return c.redirect(back(path, "error", "That heat isn't in this round."));
+  const label = heatLabel(removed.number);
+  if (!removed.drivers) return c.redirect(back(path, "msg", `Deleted ${label}.`));
+  const who = removed.drivers === 1 ? "The driver in it is" : `${removed.drivers} drivers in it are`;
+  return c.redirect(
+    back(path, "msg", `Deleted ${label}. ${who} now unplaced; build the heats again or move them into another one.`),
   );
 });
 
