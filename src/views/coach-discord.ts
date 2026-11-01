@@ -303,7 +303,7 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
   if (drafts.length) drafts.forEach(restore); else addPanel();
 })();
 </script>`;
-  return layout("Discord reaction roles", body, navUser, { wallpaper: "kerb" });
+  return layout("Discord reaction roles", body, navUser, { wallpaper: "pack" });
 }
 
 // Edit page for one live message: every emoji/role pair is shown filled in, so
@@ -397,5 +397,5 @@ ${opts.error ? `<p class="hint" style="color:var(--warn)">${escapeHtml(opts.erro
   });
 })();
 </script>`;
-  return layout("Edit reaction roles", body, navUser, { wallpaper: "kerb" });
+  return layout("Edit reaction roles", body, navUser, { wallpaper: "pack" });
 }

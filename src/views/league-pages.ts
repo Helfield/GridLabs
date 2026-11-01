@@ -146,7 +146,7 @@ export function leagueIndexPage(
 ${notice(msg)}
 ${cards}
 ${create}`;
-  return layout("Leagues", body, user, { wallpaper: "spapark" });
+  return layout("Leagues", body, user, { wallpaper: "garage" });
 }
 
 // ------------------------------------------------------------------ league
@@ -431,7 +431,7 @@ ${championship}
 </section>
 ${staffPanels}
 ${settingsPanel}`;
-  return layout(league.name, body, user, { wallpaper: "spapark" });
+  return layout(league.name, body, user, { wallpaper: "garage" });
 }
 
 // ------------------------------------------------------------------- event
@@ -892,7 +892,7 @@ ${attendancePanel(user, league, event, entries, attendance, ctx.registered, ctx.
 ${heatsPanel(user, ctx.userId, league, event, entries, attendance, ctx.heats, ctx.fieldCount)}
 ${entryForm}
 ${editEvent}`;
-  return layout(event.name, body, user, { wide: true, wallpaper: "spapark" });
+  return layout(event.name, body, user, { wide: true, wallpaper: "garage" });
 }
 
 // ------------------------------------------------------------------- staff
@@ -940,5 +940,5 @@ document.getElementById('q').addEventListener('input', function (e) {
   });
 });
 </script>`;
-  return layout("League staff", body, user, { wallpaper: "spapark" });
+  return layout("League staff", body, user, { wallpaper: "garage" });
 }

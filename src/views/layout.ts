@@ -37,8 +37,8 @@ const DEFAULT_DESCRIPTION =
 
 const MARK = `<svg class="mark__g" viewBox="-14 0 116 120" aria-hidden="true"><g transform="skewX(-6)"><polygon fill="var(--white)" points="0,0 100,0 100,22 21,22 21,95 48,95 48,120 0,120"/><polygon fill="var(--fastest)" points="40,49 98,49 98,120 48,120 48,95 73,95 73,71 40,71"/></g></svg>`;
 
-/** The three photographs used behind signed-in pages. See the wallpapers block in CSS. */
-export type Wallpaper = "asphalt" | "kerb" | "spapark";
+/** The three livery shots used behind signed-in pages. See the wallpapers block in CSS. */
+export type Wallpaper = "speed" | "pack" | "garage";
 
 export function layout(
   title: string,
@@ -215,12 +215,12 @@ p{margin:0}
 .shell--wide{max-width:1320px}
 
 /* ---------- wallpapers ----------
-   Signed-in pages sit on one of three photographs, held behind a scrim so
-   the timing colours keep the meaning they carry. The image is pinned to the
-   viewport rather than the document, so a long session tower scrolls over a
-   still picture instead of repeating it. Panels go translucent and blurred,
-   which is what lets the wallpaper read as a surface the UI is resting on
-   rather than a picture behind it.
+   Signed-in pages sit on one of three photographs of the club's #7 LMP2, held
+   behind a scrim so the timing colours keep the meaning they carry. The image
+   is pinned to the viewport rather than the document, so a long session tower
+   scrolls over a still picture instead of repeating it. Panels go translucent
+   and blurred, which is what lets the wallpaper read as a surface the UI is
+   resting on rather than a picture behind it.
 
    On the body's own background, not a z-index:-1 pseudo-element: the landing
    page's hero video already lives at -1, and it only stays visible because
@@ -231,9 +231,9 @@ body.wp{
     linear-gradient(180deg,rgba(11,14,20,.62),rgba(11,14,20,.74) 50%,rgba(11,14,20,.86)),
     var(--wp) center/cover no-repeat fixed;
 }
-.wp-asphalt{--wp:url("/bg-asphalt.webp")}
-.wp-kerb{--wp:url("/bg-kerb.webp")}
-.wp-spapark{--wp:url("/bg-spapark.webp")}
+.wp-speed{--wp:url("/bg-livery-speed.webp")}
+.wp-pack{--wp:url("/bg-livery-pack.webp")}
+.wp-garage{--wp:url("/bg-livery-garage.webp")}
 body.wp .panel{background:rgba(19,24,34,.46);backdrop-filter:blur(8px) saturate(140%)}
 body.wp .stats{background:rgba(19,24,34,.46);backdrop-filter:blur(8px) saturate(140%)}
 body.wp .stat{background:transparent}

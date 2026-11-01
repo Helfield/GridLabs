@@ -47,9 +47,10 @@ const STATIC_ASSETS = [
 for (const file of STATIC_ASSETS) {
   app.get(`/${file}`, serveStatic({ path: `./public/${file}` }));
 }
-// The three page wallpapers. Cached like the fonts: the filename changes when
-// the picture does, so a stale copy is never worth re-downloading.
-const WALLPAPERS = ["bg-asphalt.webp", "bg-kerb.webp", "bg-spapark.webp"] as const;
+// The page wallpapers, all three showing the club's own #7 LMP2 livery. Cached
+// like the fonts: the filename changes when the picture does, so a stale copy is
+// never worth re-downloading.
+const WALLPAPERS = ["bg-livery-speed.webp", "bg-livery-pack.webp", "bg-livery-garage.webp"] as const;
 for (const file of WALLPAPERS) {
   app.get(
     `/${file}`,
