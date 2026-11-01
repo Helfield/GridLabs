@@ -333,12 +333,19 @@ function toolCalls(value: unknown): ToolCall[] {
     return { id: call.id, type: "function", function: { name: call.function.name, arguments: call.function.arguments } };
   });
 }
-export function safeReply(content: string): string {
+// Every number a stop plan rests on comes from measured consumption, so the
+// tool's own basis flag is what separates a plan from a reading or a refusal.
+// "Plan only, nothing changed." after either of those is noise.
+function carriesPlan(result: unknown): boolean {
+  if (!record(result) || result.plan_only !== true) return false;
+  return result.consumption_basis === "measured_estimate" || result.consumption_basis === "hypothetical_saving";
+}
+export function safeReply(content: string, hasPlan: boolean): string {
   const clean = content.replace(/[\p{Cc}\p{Cf}\p{Cs}]/gu, " ").replace(/\s+/gu, " ").trim();
   if (!clean) throw new ProviderFailure();
-  const max = REPLY_MAX_CHARS - PLAN_ONLY_READBACK.length - 1;
+  const max = hasPlan ? REPLY_MAX_CHARS - PLAN_ONLY_READBACK.length - 1 : REPLY_MAX_CHARS;
   // Reserve the fixed readback's words as well as characters.
-  const wordBudget = REPLY_MAX_WORDS - PLAN_ONLY_READBACK.split(/\s+/).length;
+  const wordBudget = hasPlan ? REPLY_MAX_WORDS - PLAN_ONLY_READBACK.split(/\s+/).length : REPLY_MAX_WORDS;
   let bounded = clean.split(" ").slice(0, wordBudget).join(" ");
   if (bounded.length > max) {
     const cut = bounded.slice(0, max);
@@ -348,7 +355,7 @@ export function safeReply(content: string): string {
   }
   bounded = bounded.replace(/[\uD800-\uDBFF]$/u, "").trim();
   if (!bounded) throw new ProviderFailure();
-  return `${bounded} ${PLAN_ONLY_READBACK}`;
+  return hasPlan ? `${bounded} ${PLAN_ONLY_READBACK}` : bounded;
 }
 // The one field worth keeping from a failed provider response. Anything else
 // in that body is provider prose and stays unread.
@@ -366,12 +373,13 @@ async function providerReply(input: EngineerInput, key: string, deps: EngineerDe
     () => controller.abort(), PROVIDER_TIMEOUT_MS,
   );
   const model = process.env.GRIDLABS_ENGINEER_MODEL?.trim() || "gpt-4.1-mini";
+  const baseline = calculateFuelStrategy(input.telemetry);
   const messages: ProviderMessage[] = [
     { role: "system", content: SYSTEM_INSTRUCTIONS },
     ...input.history,
-    { role: "user", content: JSON.stringify({ question: input.question, telemetry: input.telemetry, baseline_fuel_strategy: calculateFuelStrategy(input.telemetry) }) },
+    { role: "user", content: JSON.stringify({ question: input.question, telemetry: input.telemetry, baseline_fuel_strategy: baseline }) },
   ];
-  let rounds = 0, count = 0;
+  let rounds = 0, count = 0, hasPlan = carriesPlan(baseline);
   const usedIds = new Set<string>();
   try {
     for (;;) {
@@ -407,6 +415,7 @@ async function providerReply(input: EngineerInput, key: string, deps: EngineerDe
             catch { result = { error: "invalid_tool_arguments" }; }
           }
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
+          if (carriesPlan(result)) hasPlan = true;
         }
         count += calls.length;
         rounds++;
@@ -414,7 +423,7 @@ async function providerReply(input: EngineerInput, key: string, deps: EngineerDe
       }
       if (rounds === 0 || typeof message.content !== "string" ||
           (output.choices[0].finish_reason !== "stop" && output.choices[0].finish_reason !== "length")) throw new ProviderFailure();
-      return safeReply(message.content);
+      return safeReply(message.content, hasPlan);
     }
   } finally { stop(); }
 }

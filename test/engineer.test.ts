@@ -660,7 +660,7 @@ test("tool loops/call budget/duplicate IDs fail closed without extra requests", 
     assert.equal(h.claims.length, 1);
   }
 });
-test("reply is trimmed, capped at the radio budget, always with fixed readback", async () => {
+test("a reply that carries a plan is trimmed, capped, and ends on the fixed readback", async () => {
   for (const text of ["  Fuel estimate ready.\n  ", "x".repeat(5000), "word ".repeat(2000), "é".repeat(3000), "Reply\u202E\u0000text"]) {
     const h = harness([completion(null, [tool()]), completion(text)]);
     const b = success(await handleEngineerRequest(request(), 7, h.deps));
@@ -677,6 +677,21 @@ test("a reply cut to length ends on a whole word, because it is read aloud", asy
   const body = b.reply.slice(0, b.reply.length - PLAN_ONLY_READBACK.length - 1);
   assert.ok(body.endsWith("abcdefgh"));
   assert.ok(body.length < REPLY_MAX_CHARS - PLAN_ONLY_READBACK.length - 1);
+});
+test("no fuel numbers means no plan, so the readback is dropped and the budget is whole", async () => {
+  const empty = () => input({ telemetry: {
+    session_type: "race", lap_number: 2, laps_total: 10, lap_distance_m: 2500,
+    track_length_m: 5000, fuel_l: 8, fuel_capacity_l: 20,
+    sample_laps: 0, litres_per_lap: null, average_lap_s: null,
+  } });
+  // Short words so the word budget, not the 200-character cap, is what binds.
+  const long = Array(40).fill("lap").join(" ");
+  const h = harness([completion(null, [tool()]), completion(long)]);
+  const b = success(await handleEngineerRequest(request(empty()), 7, h.deps));
+  assert.equal(b.reply, Array(REPLY_MAX_WORDS).fill("lap").join(" "));
+  assert.doesNotMatch(b.reply, /Plan only/);
+  // The machine flag still says nothing was written to the game.
+  assert.equal(b.plan_only, true);
 });
 
 for (const [configured, expected] of [[undefined, 2], ["", 2], ["bad", 2], ["1.5", 2], ["1e2", 2], ["Infinity", 2],
