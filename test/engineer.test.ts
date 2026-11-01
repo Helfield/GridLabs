@@ -418,12 +418,26 @@ test("provider request uses only approved data, native API protocol, bounded mod
   assert.match(first.body.messages[0].content, /Only when the driver asks about tyre temperatures does telemetry\.tyre_target_c/);
   assert.match(first.body.messages[0].content, /Never mention a temperature band in an answer about fuel/);
   assert.match(first.body.messages[0].content, /Report only the readings the question named/);
+  assert.match(first.body.messages[0].content, /min_c and max_c, the floor and ceiling for every tyre/);
   assert.match(first.body.messages[0].content, /Never invent VE, pit loss/);
   assert.equal(body.remaining, TRIAL_QUESTIONS_DEFAULT - 1);
   assert.equal(body.limit, TRIAL_QUESTIONS_DEFAULT);
   assert.equal(h.releases.length, 0);
   assert.equal(body.plan_only, true);
   assert.ok(body.reply.endsWith(PLAN_ONLY_READBACK));
+});
+test("the coach's band reaches the model named, so it cannot read as a front and rear pair", async () => {
+  const withBand = input({ telemetry: { ...input().telemetry,
+    tyre_target_c: [80, 92], tyre_compounds: ["medium", "medium"] } });
+  const h = harness([completion(null, [tool()]), completion()]);
+  success(await handleEngineerRequest(request(withBand), 7, h.deps));
+  const sent = JSON.parse(h.sent[0].body.messages.at(-1).content).telemetry;
+  assert.deepEqual(sent.tyre_target_c, { min_c: 80, max_c: 92 });
+  // The compounds really are front and rear, and stay a pair.
+  assert.deepEqual(sent.tyre_compounds, ["medium", "medium"]);
+  const none = harness([completion(null, [tool()]), completion()]);
+  success(await handleEngineerRequest(request(), 7, none.deps));
+  assert.equal(JSON.parse(none.sent[0].body.messages.at(-1).content).telemetry.tyre_target_c, null);
 });
 test("custom scenario returns deterministic tool numbers, shared deadline and key/model/limit config", async () => {
   process.env.GRIDLABS_ENGINEER_MODEL = "gpt-4.1-mini-custom";
