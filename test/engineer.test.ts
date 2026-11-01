@@ -411,7 +411,8 @@ test("provider request uses only approved data, native API protocol, bounded mod
   assert.equal(data.baseline_fuel_strategy.fuel_needed_l, 17);
   assert.equal(data.telemetry.fuel_l, 8);
   assert.doesNotMatch(JSON.stringify(first.body), /PRIVATE_|draft-test-key|user_id/);
-  assert.match(first.body.messages[0].content, /British English.*maximum 20 words/);
+  assert.match(first.body.messages[0].content, /British English.*maximum 25 words/);
+  assert.match(first.body.messages[0].content, /never reuse a sentence you have already said/);
   assert.match(first.body.messages[0].content, /no preamble/);
   assert.match(first.body.messages[0].content, /No game control exists/);
   assert.match(first.body.messages[0].content, /Only when the driver asks about tyre temperatures does telemetry\.tyre_target_c/);
