@@ -414,7 +414,9 @@ test("provider request uses only approved data, native API protocol, bounded mod
   assert.match(first.body.messages[0].content, /British English.*maximum 20 words/);
   assert.match(first.body.messages[0].content, /no preamble/);
   assert.match(first.body.messages[0].content, /No game control exists/);
-  assert.match(first.body.messages[0].content, /tyre_target_c is the coach's working tyre temperature band/);
+  assert.match(first.body.messages[0].content, /Only when the driver asks about tyre temperatures does telemetry\.tyre_target_c/);
+  assert.match(first.body.messages[0].content, /Never mention a temperature band in an answer about fuel/);
+  assert.match(first.body.messages[0].content, /Report only the readings the question named/);
   assert.match(first.body.messages[0].content, /Never invent VE, pit loss/);
   assert.equal(body.remaining, TRIAL_QUESTIONS_DEFAULT - 1);
   assert.equal(body.limit, TRIAL_QUESTIONS_DEFAULT);
