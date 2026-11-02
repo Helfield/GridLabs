@@ -161,3 +161,17 @@ row (`google_email`, `google_refresh_token`) and each placed event is tracked in
 idempotently at startup by `db/ensure-schema.ts`). Every Google call is
 fail-quiet — it logs and carries on, so a calendar hiccup never breaks the site.
 
+## Docs
+
+Longer write-ups live in [`docs/`](docs/):
+
+- [`docs/league-rulebook.md`](docs/league-rulebook.md) — season structure,
+  licence bands and stewarding. The league pages are built to this document.
+- [`docs/voice-engineer.md`](docs/voice-engineer.md) — the in-car radio. It
+  covers both halves, the desktop app at
+  [`Helfield/lmu-coach`](https://github.com/Helfield/lmu-coach) and the server
+  code in `src/engineer.ts`, `src/routes/api.ts` and `src/db/engineerQuota.ts`.
+  Read it before changing a prompt, an intent keyword, a reply limit or the
+  quota, because most of those rules exist after a driver was misled by the
+  version without them.
+
