@@ -292,6 +292,7 @@ const LIBRARY_CSS = `
 .tcard__map{background:var(--carbon);border-bottom:1px solid var(--hair);padding:6px}
 .tcard__body{padding:13px 15px 15px}
 .tcard__name{
+  font-family:var(--font-display);
   font-size:19px;font-weight:600;
   text-transform:uppercase;letter-spacing:.03em;line-height:1.15;
 }

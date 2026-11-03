@@ -10,9 +10,11 @@
  * That's why purple is the primary accent -- in this world it literally
  * means "fastest", which is the whole point of the product.
  *
- * Type: Race Sport for all of it, and IBM Plex Mono (tabular figures) for
- * lap times and other figures, so timing columns align the way a real
- * timing tower does.
+ * Type: Race Sport for the headings and the wordmark only, a system sans for
+ * everything else. Race Sport is an all-caps display face, so body copy set in
+ * it is unreadable at 15px; the desktop app made the same split for the same
+ * reason. IBM Plex Mono (tabular figures) still sets lap times and other
+ * figures, so timing columns align the way a real timing tower does.
  *
  * Plain CSS rather than a utility framework: no build step for the
  * person running this, no CDN dependency, and precise control over the
@@ -177,8 +179,8 @@ const CSS = `
   unicode-range:U+0-20,U+22-24,U+27-2E,U+30-10FFFF;
 }
 :root{
-  --font-display:'Race Sport',system-ui,sans-serif;
-  --font-text:'Race Sport',system-ui,sans-serif;
+  --font-display:'Race Sport','Segoe UI',system-ui,sans-serif;
+  --font-text:'Segoe UI','Segoe UI Variable Text',system-ui,sans-serif;
   --carbon:#0B0E14;
   --panel:#131822;
   --panel-2:#1A2130;
@@ -211,7 +213,10 @@ body{
 }
 a{color:inherit}
 h1,h2,h3{margin:0;font-weight:700;line-height:1.1}
-h1{font-family:var(--font-display)}
+h1,h2{font-family:var(--font-display)}
+/* h3 is left on the text face on purpose: its only uses are the privacy page's
+   section labels, which are body-sized, and that is the size Race Sport stops
+   being readable at. */
 p{margin:0}
 
 .shell{width:100%;max-width:var(--shell);margin:0 auto;padding:44px 24px 96px;flex:1}
@@ -257,7 +262,7 @@ body.wp .nav{background:rgba(11,14,20,.66)}
 .nav__name{font-size:13.5px;color:var(--muted);white-space:nowrap}
 .mark{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}
 .mark__g{width:24px;height:25px;display:block}
-.mark__text{font-weight:700;font-size:20px;letter-spacing:.01em;white-space:nowrap}
+.mark__text{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:.01em;white-space:nowrap}
 .avatar{width:27px;height:27px;border-radius:50%;border:1px solid var(--hair);object-fit:cover}
 .avatar--fallback{display:grid;place-items:center;background:var(--panel-2);font-size:12px;color:var(--muted)}
 .linkbtn{background:none;border:0;color:var(--dim);font:inherit;font-size:13.5px;cursor:pointer;padding:0;white-space:nowrap}
