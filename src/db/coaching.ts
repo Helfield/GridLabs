@@ -1,7 +1,8 @@
 /**
  * coaching.ts
  *
- * The paid-coaching rows: which packages exist and who holds them.
+ * The paid-coaching rows: which packages exist, who holds them, what the holder
+ * filled in, and what their coach has written about them.
  *
  * This is the only place access is decided, and it decides it from the
  * entitlements table alone. That is what keeps the payment gateway out of the
@@ -10,13 +11,14 @@
  * same table without knowing anything happened.
  *
  * The rules themselves -- whether an entitlement still counts, whether a pasted
- * link is usable -- are in src/coachingRules.ts, which holds no database.
+ * link is usable, whether a note is worth storing -- are in src/coachingRules.ts,
+ * which holds no database.
  */
 
 import { db } from "./client";
-import { coachingEntitlements, coachingProducts, coachingProfiles, users } from "./schema";
-import { and, asc, eq, inArray } from "drizzle-orm";
-import { entitlementCounts, type Intake } from "../coachingRules";
+import { coachingEntitlements, coachingNotes, coachingProducts, coachingProfiles, users } from "./schema";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { entitlementCounts, ONE_TO_ONE, type Intake } from "../coachingRules";
 
 export type CoachingProduct = typeof coachingProducts.$inferSelect;
 export type EntitlementSource = "manual" | "whop_role" | "whop_webhook";
@@ -218,4 +220,113 @@ export async function saveCoachingProfile(userId: number, intake: Intake, at: Da
 /** A jsonb column read as a list of names, ignoring anything that isn't one. */
 function nameList(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0) : [];
+}
+
+// ---------------------------------------------------------------- notes
+
+/** A note as the pages read it, with the name of whoever wrote it already on it. */
+export type CoachingNote = {
+  id: number;
+  userId: number;
+  authorId: number;
+  authorName: string;
+  body: string;
+  createdAt: Date;
+};
+
+/**
+ * Everything written about one driver, newest first.
+ *
+ * Newest first because this list is opened before a session, when the question is
+ * what was last worked on rather than what the first session covered. The author's
+ * name is joined in because more than one coach may write on one student.
+ */
+export async function listCoachingNotes(userId: number): Promise<CoachingNote[]> {
+  return db
+    .select({
+      id: coachingNotes.id,
+      userId: coachingNotes.userId,
+      authorId: coachingNotes.authorId,
+      authorName: users.name,
+      body: coachingNotes.body,
+      createdAt: coachingNotes.createdAt,
+    })
+    .from(coachingNotes)
+    .innerJoin(users, eq(users.id, coachingNotes.authorId))
+    .where(eq(coachingNotes.userId, userId))
+    .orderBy(desc(coachingNotes.createdAt), desc(coachingNotes.id));
+}
+
+/** Write a note about a driver, as whoever is at the keyboard. */
+export async function addCoachingNote(userId: number, authorId: number, body: string): Promise<void> {
+  await db.insert(coachingNotes).values({ userId, authorId, body });
+}
+
+/** One note by id, for the page that deletes it. Its body isn't needed there. */
+export async function getCoachingNote(id: number) {
+  return db.query.coachingNotes.findFirst({
+    where: eq(coachingNotes.id, id),
+    columns: { userId: true, authorId: true },
+  });
+}
+
+/** Take a note away. False when there was no such note, so a double click isn't an error. */
+export async function deleteCoachingNote(id: number): Promise<boolean> {
+  const removed = await db.delete(coachingNotes).where(eq(coachingNotes.id, id)).returning({ id: coachingNotes.id });
+  return removed.length > 0;
+}
+
+export type CoachingStudentRow = {
+  userId: number;
+  name: string;
+  discordUsername: string;
+  /** When their intake was last saved, or null while it's still missing. */
+  intakeAt: Date | null;
+  goal: string | null;
+  noteCount: number;
+  lastNoteAt: Date | null;
+};
+
+/**
+ * Who holds the 1-on-1 package, by name, with how much of each profile is filled
+ * in and how many notes sit on it. This is the list a coach opens to work.
+ *
+ * A lapsed holding is left out: a driver who stopped paying isn't a session
+ * waiting to happen. Their rows stay, notes included, so a renewal puts them back
+ * on the list with everything they'd built up still there.
+ */
+export async function listCoachingStudents(now: Date = new Date()): Promise<CoachingStudentRow[]> {
+  const held = await db
+    .select({
+      userId: users.id,
+      name: users.name,
+      discordUsername: users.discordUsername,
+      expiresAt: coachingEntitlements.expiresAt,
+      intakeAt: coachingProfiles.updatedAt,
+      goal: coachingProfiles.goal,
+    })
+    .from(coachingEntitlements)
+    .innerJoin(coachingProducts, eq(coachingEntitlements.productId, coachingProducts.id))
+    .innerJoin(users, eq(coachingEntitlements.userId, users.id))
+    .leftJoin(coachingProfiles, eq(coachingProfiles.userId, users.id))
+    .where(eq(coachingProducts.slug, ONE_TO_ONE));
+
+  const tallied = await db
+    .select({
+      userId: coachingNotes.userId,
+      n: sql<number>`count(*)::int`,
+      lastAt: sql<Date | null>`max(${coachingNotes.createdAt})`,
+    })
+    .from(coachingNotes)
+    .groupBy(coachingNotes.userId);
+  const tally = new Map(tallied.map((t) => [t.userId, t]));
+
+  return held
+    .filter((r) => entitlementCounts(r, now))
+    .map(({ expiresAt, ...r }) => ({
+      ...r,
+      noteCount: tally.get(r.userId)?.n ?? 0,
+      lastNoteAt: tally.get(r.userId)?.lastAt ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -2,9 +2,10 @@
  * coachingRules.ts
  *
  * The paid-coaching decisions. Reading and writing the rows is
- * src/db/coaching.ts; anything that decides access, validates an intake answer
- * or matches a member to a coach lives here, holding no database, so every case
- * in it can be tested directly. The same split as src/leagueRules.ts.
+ * src/db/coaching.ts; anything that decides access, validates an intake answer or
+ * a coach's note, or matches a member to a coach lives here, holding no database,
+ * so every case in it can be tested directly. The same split as
+ * src/leagueRules.ts.
  */
 
 import { LICENCE_BANDS } from "./leagueRules";
@@ -223,4 +224,42 @@ function unique(list: string[]): string[] {
     out.push(item);
   }
   return out;
+}
+
+// ---------------------------------------------------------------- notes
+
+/**
+ * How much a coach's note has to be.
+ *
+ * The floor is low because the useful one is written at the side of a session, in
+ * a hurry: "braking too early into the last corner" is worth keeping. The ceiling
+ * is a whole session's notes in one go, and a coach who passes it is better off
+ * writing a second note with its own date than one unbroken page.
+ */
+export const NOTE_MIN = 4;
+export const NOTE_MAX = 2000;
+
+/**
+ * Check a note before it's stored.
+ *
+ * The blank form and the form that only says "." are refused rather than stored:
+ * a note that says nothing still shows up in the list, and the coach who reads
+ * their own thread next week can't tell it apart from a session they forgot.
+ */
+export function validateNote(v: unknown): { note: string | null; error: string | null } {
+  const body = typeof v === "string" ? v.trim() : "";
+  if (body.length < NOTE_MIN) return { note: null, error: `Write what you want them to remember, at least ${NOTE_MIN} characters.` };
+  if (body.length > NOTE_MAX) return { note: null, error: `That's over ${NOTE_MAX} characters. Save it as two notes.` };
+  return { note: body, error: null };
+}
+
+/**
+ * May this account remove a note.
+ *
+ * Whoever wrote it, and a moderator. Not another coach: a note is one person's
+ * read of a session, and the club still needs somebody who can take one down after
+ * its writer has stopped coaching.
+ */
+export function noteRemovableBy(note: { authorId: number }, viewer: { id: number; role: string }): boolean {
+  return note.authorId === viewer.id || viewer.role === "moderator";
 }

@@ -6,7 +6,11 @@ import {
   entitlementCounts,
   GOAL_MAX,
   linkField,
+  NOTE_MAX,
+  NOTE_MIN,
+  noteRemovableBy,
   validateIntake,
+  validateNote,
   youtubeLink,
   type IntakeForm,
 } from "../src/coachingRules";
@@ -129,4 +133,56 @@ test("an answer over a limit is refused, never silently cut", () => {
   const long = ok({ goal: `Qualifying pace in the GT3. ${"x".repeat(GOAL_MAX)}` });
   expect(long.intake).toBeNull();
   expect(long.errors.goal).toBeTruthy();
+});
+
+// ---------------------------------------------------------------- notes
+
+test("a note that says nothing is refused", () => {
+  for (const v of ["", "   ", ".", "\n\t"]) {
+    const { note, error } = validateNote(v);
+    expect(note, JSON.stringify(v)).toBeNull();
+    expect(error, JSON.stringify(v)).toBeTruthy();
+  }
+});
+
+test("a note is stored as written, without the space around it", () => {
+  const { note } = validateNote("  Braking too early into the last corner.  ");
+  expect(note).toBe("Braking too early into the last corner.");
+});
+
+test("a note over the limit is refused rather than cut", () => {
+  // The cut half of a session's notes is the half nobody notices is missing.
+  const { note, error } = validateNote("x".repeat(NOTE_MAX + 1));
+  expect(note).toBeNull();
+  expect(error).toBeTruthy();
+  expect(validateNote("x".repeat(NOTE_MAX)).note).toHaveLength(NOTE_MAX);
+});
+
+test("anything that isn't a sentence in a note is refused", () => {
+  for (const v of [undefined, null, 42, ["a few words", "two of them"]]) {
+    expect(validateNote(v).note, String(v)).toBeNull();
+  }
+});
+
+test("whoever wrote a note can remove it", () => {
+  expect(noteRemovableBy({ authorId: 5 }, { id: 5, role: "coach" })).toBe(true);
+});
+
+test("another coach cannot remove a note they didn't write", () => {
+  // A note is one person's read of a session, not a shared document.
+  expect(noteRemovableBy({ authorId: 5 }, { id: 9, role: "coach" })).toBe(false);
+});
+
+test("a moderator can take any note down", () => {
+  expect(noteRemovableBy({ authorId: 5 }, { id: 9, role: "moderator" })).toBe(true);
+});
+
+test("the driver a note is about can't remove it", () => {
+  expect(noteRemovableBy({ authorId: 5 }, { id: 12, role: "student" })).toBe(false);
+});
+
+test("a note at the floor is kept and one under it isn't", () => {
+  const floor = "x".repeat(NOTE_MIN);
+  expect(validateNote(floor).note).toBe(floor);
+  expect(validateNote("x".repeat(NOTE_MIN - 1)).note).toBeNull();
 });

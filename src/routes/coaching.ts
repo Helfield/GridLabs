@@ -15,23 +15,30 @@ import { requireAuth } from "./auth";
 import { getUserById } from "../db/queries";
 import { getDeclaredBands, getEvents, isStaff, listLeagues } from "../db/league";
 import {
+  addCoachingNote,
+  deleteCoachingNote,
+  getCoachingNote,
   getCoachingProfile,
   getEntitlementsForUser,
   grantProduct,
   hasProduct,
   listAllEntitlements,
+  listCoachingNotes,
   listCoachingProducts,
+  listCoachingStudents,
   listGrantCandidates,
   revokeProduct,
   saveCoachingProfile,
   type CoachingProfile,
 } from "../db/coaching";
-import { LIVE_EVENTS, ONE_TO_ONE, validateIntake } from "../coachingRules";
+import { LIVE_EVENTS, ONE_TO_ONE, noteRemovableBy, validateIntake, validateNote } from "../coachingRules";
 import {
   coachingAdminPage,
   coachingHubPage,
   coachingIntakePage,
   coachingProfilePage,
+  coachingStudentPage,
+  coachingStudentsPage,
   liveSchedulePage,
   type IntakeValues,
 } from "../views/coaching";
@@ -174,7 +181,9 @@ coachingRoutes.get("/portal", async (c) => {
   if (!user) return c.redirect("/login");
   if (!(await hasProduct(user.id, ONE_TO_ONE))) return refused(c);
   const profile = await getCoachingProfile(user.id);
-  if (profile) return c.html(coachingProfilePage(user, profile, { notice: readNotice(c) }));
+  if (profile) {
+    return c.html(coachingProfilePage(user, profile, { notice: readNotice(c), notes: await listCoachingNotes(user.id) }));
+  }
   return c.html(
     coachingIntakePage(user, {
       values: await formValues(user, null),
@@ -317,4 +326,89 @@ coachingRoutes.post("/admin/revoke", async (c) => {
         : "They didn't hold it, so nothing changed.",
     ),
   );
+});
+
+// ---------------------------------------------------------------- staff: notes
+
+/**
+ * The driver a notes route is about, or null.
+ *
+ * Two things have to hold: the account exists, and it holds the 1-on-1 package.
+ * The second is what stops a hand-written form from writing notes onto an account
+ * that never bought coaching -- the list a coach clicks from only ever shows
+ * holders, so this is the same rule applied again where nobody is looking.
+ */
+async function studentOf(id: string) {
+  const userId = Number(id);
+  if (!Number.isInteger(userId) || userId <= 0) return null;
+  const student = await getUserById(userId);
+  if (!student || !(await hasProduct(student.id, ONE_TO_ONE))) return null;
+  return student;
+}
+
+/** Who holds the package, what of their profile exists, and how much is written on it. */
+coachingRoutes.get("/students", async (c) => {
+  const staff = await staffUser(c);
+  if (!staff) return c.redirect("/coaching");
+  return c.html(coachingStudentsPage(staff, await listCoachingStudents(), { notice: readNotice(c) }));
+});
+
+/** One driver's page: their intake, their notes, and the box that adds the next one. */
+coachingRoutes.get("/students/:id", async (c) => {
+  const staff = await staffUser(c);
+  if (!staff) return c.redirect("/coaching");
+  const student = await studentOf(c.req.param("id"));
+  if (!student) return c.redirect(back("/coaching/students", "error", "That driver isn't on the student list."));
+  const [profile, notes] = await Promise.all([getCoachingProfile(student.id), listCoachingNotes(student.id)]);
+  return c.html(coachingStudentPage(staff, student, profile, notes, { notice: readNotice(c) }));
+});
+
+/**
+ * Write a note.
+ *
+ * A refused one comes back as the same page with the coach's own words still in the
+ * box: they've just described a session, and losing that to a length limit is a
+ * worse outcome than the limit itself.
+ */
+coachingRoutes.post("/students/:id/notes", async (c) => {
+  const staff = await staffUser(c);
+  if (!staff) return c.redirect("/coaching");
+  const student = await studentOf(c.req.param("id"));
+  if (!student) return c.redirect(back("/coaching/students", "error", "That driver isn't on the student list."));
+  const body = await c.req.parseBody();
+  const raw = typeof body.body === "string" ? body.body : "";
+  const [profile, notes] = await Promise.all([getCoachingProfile(student.id), listCoachingNotes(student.id)]);
+  const { note, error } = validateNote(raw);
+  if (!note) {
+    return c.html(
+      coachingStudentPage(staff, student, profile, notes, {
+        notice: { kind: "error", text: "Nothing was saved." },
+        error,
+        draft: raw,
+      }),
+      422,
+    );
+  }
+  await addCoachingNote(student.id, staff.id, note);
+  return c.redirect(back(`/coaching/students/${student.id}`, "msg", "Saved. They can read it now."));
+});
+
+/**
+ * Take a note away.
+ *
+ * Where it goes back to is read off the note rather than the form, so a hand-built
+ * request can't use this route to land somewhere else carrying a message.
+ */
+coachingRoutes.post("/notes/remove", async (c) => {
+  const staff = await staffUser(c);
+  if (!staff) return c.redirect("/coaching");
+  const body = await c.req.parseBody();
+  const noteId = Number(body.noteId);
+  const note = Number.isInteger(noteId) && noteId > 0 ? await getCoachingNote(noteId) : null;
+  if (!note) return c.redirect(back("/coaching/students", "error", "That note is already gone."));
+  if (!noteRemovableBy(note, staff)) {
+    return c.redirect(back(`/coaching/students/${note.userId}`, "error", "Only its writer can remove it, or a moderator."));
+  }
+  await deleteCoachingNote(noteId);
+  return c.redirect(back(`/coaching/students/${note.userId}`, "msg", "Note removed."));
 });

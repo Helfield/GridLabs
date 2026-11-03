@@ -240,4 +240,14 @@ export async function ensureSchema(): Promise<void> {
     "created_at" timestamp DEFAULT now() NOT NULL,
     "updated_at" timestamp DEFAULT now() NOT NULL
   )`);
+  // The coach's notes on a driver (drizzle/0017_coaching_notes.sql): added and
+  // removed, never edited, and read by the driver as well as the staff.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "coaching_notes" (
+    "id" serial PRIMARY KEY NOT NULL,
+    "user_id" integer NOT NULL REFERENCES "users"("id"),
+    "author_id" integer NOT NULL REFERENCES "users"("id"),
+    "body" text NOT NULL,
+    "created_at" timestamp DEFAULT now() NOT NULL
+  )`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "coaching_notes_user_idx" ON "coaching_notes" ("user_id")`);
 }

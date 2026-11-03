@@ -422,3 +422,29 @@ export const coachingProfiles = pgTable("coaching_profiles", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// What a coach writes down about a driver, the other half of the 1-on-1 package.
+//
+// There is one kind of note and no visibility column, on purpose: the driver reads
+// the same rows their coach wrote, so nothing on the page depends on which list a
+// note was filed under and a coach never has to guess whether they're about to
+// write something the student will see.
+//
+// Notes are only ever added or removed, never edited. A note is a record of what
+// was said in a session, and a coach who wants to correct one writes the next one
+// rather than silently rewriting the past.
+export const coachingNotes = pgTable(
+  "coaching_notes",
+  {
+    id: serial("id").primaryKey(),
+    // The driver the note is about. The author is a second column because another
+    // coach may write on the same student, and a note has to say who wrote it.
+    userId: integer("user_id").notNull().references(() => users.id),
+    authorId: integer("author_id").notNull().references(() => users.id),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  // Every read of this table is "the notes on this driver, newest first", so the
+  // driver is the key.
+  (t) => ({ forUser: index("coaching_notes_user_idx").on(t.userId) }),
+);
