@@ -101,7 +101,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-for /f "usebackq delims=" %%A in (`git rev-parse --short=7 HEAD`) do set SHA=%%A
+REM --short=7 reads as "fatal: Needed a single revision" inside a for /f, which
+REM left SHA empty and made the wait loop below poll for no commit at all.
+for /f "usebackq delims=" %%A in (`git rev-parse --short HEAD`) do set SHA=%%A
 
 echo.
 echo === Waiting for the site ===================================
