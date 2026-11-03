@@ -196,4 +196,48 @@ export async function ensureSchema(): Promise<void> {
     "user_id" integer PRIMARY KEY NOT NULL REFERENCES "users"("id"),
     "questions" integer NOT NULL
   )`);
+  // Paid coaching (drizzle/0015_coaching_products.sql): two new tables. The
+  // products are seeded here because the gate needs them on the first request
+  // after a deploy, and ON CONFLICT DO NOTHING means a coach editing the wording
+  // is never undone by a boot.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "coaching_products" (
+    "id" serial PRIMARY KEY NOT NULL,
+    "slug" text NOT NULL UNIQUE,
+    "name" text NOT NULL,
+    "blurb" text NOT NULL,
+    "unlocks" text NOT NULL,
+    "created_at" timestamp DEFAULT now() NOT NULL
+  )`);
+  await db.execute(sql`INSERT INTO "coaching_products" ("slug", "name", "blurb", "unlocks") VALUES
+    ('one_to_one', '1-on-1 coaching', 'One coach, assigned to you from the hours you mark as free.', 'Your own profile: an intake form, your coach''s notes on it, and a time booked with them.'),
+    ('live_events', 'Live events', 'The club''s live sessions on track together.', 'The live schedule: which nights the club runs, and what is coming up.')
+  ON CONFLICT ("slug") DO NOTHING`);
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "coaching_entitlements" (
+    "id" serial PRIMARY KEY NOT NULL,
+    "user_id" integer NOT NULL REFERENCES "users"("id"),
+    "product_id" integer NOT NULL REFERENCES "coaching_products"("id"),
+    "source" text DEFAULT 'manual' NOT NULL,
+    "external_id" text,
+    "expires_at" timestamp,
+    "granted_by" integer REFERENCES "users"("id"),
+    "created_at" timestamp DEFAULT now() NOT NULL
+  )`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "coaching_entitlements_user_product_idx" ON "coaching_entitlements" ("user_id","product_id")`);
+  // The intake profile (drizzle/0016_coaching_profiles.sql): one row per paid
+  // member, written by the member themselves.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "coaching_profiles" (
+    "id" serial PRIMARY KEY NOT NULL,
+    "user_id" integer NOT NULL UNIQUE REFERENCES "users"("id"),
+    "name" text NOT NULL,
+    "email" text NOT NULL,
+    "sr_band" text NOT NULL,
+    "dr_band" text NOT NULL,
+    "experience" text NOT NULL,
+    "classes" jsonb NOT NULL,
+    "goal" text NOT NULL,
+    "setup_link" text,
+    "video" text NOT NULL,
+    "created_at" timestamp DEFAULT now() NOT NULL,
+    "updated_at" timestamp DEFAULT now() NOT NULL
+  )`);
 }

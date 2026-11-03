@@ -101,6 +101,24 @@ export async function getEntries(leagueId: number) {
 
 export type Entry = Awaited<ReturnType<typeof getEntries>>[number];
 
+/**
+ * The bands this driver declared on a league registration, newest first.
+ *
+ * The coaching intake prefills from here rather than making everyone type their
+ * licence bands twice: registration is where they last declared them. Null means
+ * they've never registered or registered before bands were asked for, and the
+ * intake then asks as it would anyone else.
+ */
+export async function getDeclaredBands(userId: number): Promise<{ srBand: string | null; drBand: string | null }> {
+  const rows = await db
+    .select({ srBand: leagueEntries.srBand, drBand: leagueEntries.drBand })
+    .from(leagueEntries)
+    .where(eq(leagueEntries.userId, userId))
+    .orderBy(desc(leagueEntries.createdAt))
+    .limit(1);
+  return rows[0] ?? { srBand: null, drBand: null };
+}
+
 export async function getEvents(leagueId: number) {
   return db.select().from(leagueEvents).where(eq(leagueEvents.leagueId, leagueId)).orderBy(asc(leagueEvents.round));
 }

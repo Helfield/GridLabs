@@ -130,7 +130,8 @@ function navBar(user: NavUser): string {
         <a href="/library">Reference laps</a>
         <a href="/download">Download</a>
         <a href="/league">League</a>
-        ${user.role === "coach" ? `<a href="/coach/reference-laps">Upload</a><a href="/coach/discord">Discord</a>` : ""}
+        <a href="/coaching">Coaching</a>
+        ${user.role === "coach" ? `<a href="/coach/discord">Discord</a>` : ""}
         <a href="/account">Account</a>
       </nav>
     </div>
@@ -302,6 +303,9 @@ body.wp .nav{background:rgba(11,14,20,.66)}
 
 .field{display:block;margin-bottom:14px}
 .field__label{display:block;font-size:13px;font-weight:500;color:#A3AEBF;margin-bottom:6px}
+/* Two questions to a row where they're a pair: the two licence bands, name and
+   email. .field already brings its own bottom margin, so only the column gap matters. */
+.form-2{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}
 /* Controls are a fill, not a box. panel-2 is lighter than both the page and a panel, so the
    same rule reads as raised wherever it sits. It targets the elements rather than only the
    ones inside a .field, because a bare input otherwise picks up the browser's own grey box. */
@@ -313,6 +317,15 @@ input:not([type="checkbox"]):not([type="radio"]),select,textarea{
 input:focus:not([type="checkbox"]):not([type="radio"]),select:focus,textarea:focus{
   outline:none;border-color:var(--fastest);box-shadow:0 0 0 3px rgba(160,107,255,.18);
 }
+/* Choose several of a short list without a second page. A column of bare
+   checkboxes is invisible against a photograph, so a chosen one fills white the
+   way the app's controls do -- purple stays where it means "fastest". */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:8px 13px;background:var(--panel-2);
+  border-radius:999px;font-size:14px;color:#A3AEBF;cursor:pointer;line-height:1.2}
+.chip input{accent-color:var(--carbon);width:14px;height:14px;flex:none}
+.chip:has(input:checked){background:var(--white);color:var(--carbon)}
+.field__err{display:block;font-size:12.5px;color:var(--warn);margin-top:6px}
 
 .empty{text-align:center;padding:38px 20px;color:var(--dim);font-size:14px}
 .empty strong{display:block;color:var(--muted);font-weight:500;margin-bottom:5px}
@@ -364,6 +377,8 @@ input:focus:not([type="checkbox"]):not([type="radio"]),select:focus,textarea:foc
 .backlink:hover{color:var(--fastest)}
 
 .grid-2{display:grid;grid-template-columns:1.55fr .95fr;gap:32px;align-items:start}
+/* Two peers, side by side and equal, which is what a pair of packages is. */
+.grid-eq{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start}
 .stack{display:flex;flex-direction:column;gap:32px}
 .mt{margin-top:32px}
 
@@ -437,6 +452,8 @@ input:focus:not([type="checkbox"]):not([type="radio"]),select:focus,textarea:foc
   .hero-bg::after{background:linear-gradient(180deg,rgba(11,14,20,.5) 0,rgba(11,14,20,.8) 35%,var(--carbon) 100%)}
   .hero{grid-template-columns:1fr;gap:36px;padding:10px 0 44px}
   .grid-2{grid-template-columns:1fr}
+  .grid-eq{grid-template-columns:1fr}
+  .form-2{grid-template-columns:1fr}
   .nav__links{display:none}
   .shell{padding:26px 18px 56px}
   .nav__inner,.foot__inner{padding-left:18px;padding-right:18px}

@@ -346,3 +346,79 @@ export const tempVoiceChannels = pgTable("temp_voice_channels", {
   ownerId: text("owner_id").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------- paid coaching
+
+// The packages Grid Labs sells. Rows rather than constants so another one can be
+// added without a code change. `slug` is what the gate checks, so the display
+// name and the wording can be edited without anyone losing access.
+export const coachingProducts = pgTable("coaching_products", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  blurb: text("blurb").notNull(),
+  // What holding this package gets a member on the site, in their words. Written
+  // once here so the page offering it and the page gating it can't disagree.
+  unlocks: text("unlocks").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Who paid for what. One row per member per package, so the portal's question is
+// always "does this user hold this slug" and never "what did this user buy".
+// Nothing else on the site reads a payment provider: the gate is here, which is
+// what lets Whop be added as a second writer of these rows instead of a second
+// way of deciding access.
+export const coachingEntitlements = pgTable(
+  "coaching_entitlements",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id),
+    productId: integer("product_id").notNull().references(() => coachingProducts.id),
+    // "manual" is a coach or moderator adding access from /coaching/admin.
+    // "whop_role" and "whop_webhook" are for the gateway: the same rows, written
+    // by a different thing. Kept so a member's access can be traced to wherever
+    // it came from without guessing.
+    source: text("source").notNull().default("manual"),
+    // The payment platform's own id for this membership, so its webhook updates
+    // or cancels exactly this row rather than minting a second one.
+    externalId: text("external_id"),
+    // Null means it doesn't run out. Set from a subscription's current period so
+    // an unpaid renewal takes access away without anyone having to notice.
+    expiresAt: timestamp("expires_at"),
+    grantedBy: integer("granted_by").references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({ perUserProduct: uniqueIndex("coaching_entitlements_user_product_idx").on(t.userId, t.productId) }),
+);
+
+// What a member fills in once they've paid, and what their coach reads before the
+// first session. One row per account, edited by its owner: the coach's own
+// annotations are separate (coaching_notes, stage 3), so an edit here never
+// overwrites anything a coach wrote.
+//
+// name and email are stored rather than read from users, because the address the
+// Discord sign-in gives isn't always a real one and a coach needs something they
+// can actually send a booking to. The bands are stored too: a driver's league
+// registration is the last time they declared them, and a coaching profile
+// written after that should carry the bands they hold now.
+export const coachingProfiles = pgTable("coaching_profiles", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().unique().references(() => users.id),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  srBand: text("sr_band").notNull(),
+  drBand: text("dr_band").notNull(),
+  experience: text("experience").notNull(),
+  // The classes COACHING_CLASSES offers, kept as an array because a driver picks
+  // more than one and a coach reads them as a list, never queries into them.
+  classes: jsonb("classes").notNull(),
+  goal: text("goal").notNull(),
+  // A link to an image someone hosted, not a file: nothing on this site takes an
+  // upload, so a setup photo costs no storage and no virus scan.
+  setupLink: text("setup_link"),
+  // Their fastest lap at the track they most want to work on, pasted as a YouTube
+  // link for the same reason as the photo above.
+  video: text("video").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
