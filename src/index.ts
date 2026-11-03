@@ -13,6 +13,7 @@ import { libraryRoutes } from "./routes/library";
 import { downloadRoutes } from "./routes/download";
 import { leagueRoutes } from "./routes/league";
 import { coachingRoutes } from "./routes/coaching";
+import { whopRoutes } from "./routes/whop";
 import { versionRoutes } from "./routes/version";
 import { leaderboardEnabled, syncAllLeaderboards } from "./discord/leaderboard";
 import { promoteBestLaps } from "./db/promotions";
@@ -98,6 +99,11 @@ app.route("/coaching", coachingRoutes);
 
 // No auth, no db: which commit and branch this process booted from.
 app.route("/version", versionRoutes);
+
+// Whop's deliveries. Mounted at the top level rather than under /coaching
+// because every route there sits behind a session, and a payment platform has
+// no cookie to bring. What stands in for the session is checked inside.
+app.route("/whop", whopRoutes);
 
 app.get("/", (c) => {
   return c.html(landingPage(DISCORD_INVITE_URL));

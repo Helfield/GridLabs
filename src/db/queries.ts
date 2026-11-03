@@ -1,10 +1,70 @@
 import { db } from "./client";
 import { users, sessions, referenceLaps, setups } from "./schema";
 import type { SetupInput } from "../setups";
-import { eq, and, or, inArray, sql } from "drizzle-orm";
+import { eq, and, or, inArray, sql, type SQL } from "drizzle-orm";
 
 export async function getUserById(id: number) {
   return db.query.users.findFirst({ where: eq(users.id, id) });
+}
+
+/**
+ * The account a payment belongs to, from whichever identity the payment platform
+ * sent.
+ *
+ * A purchase arrives naming a buyer, and this site has three things a buyer could
+ * be named by. The Discord id is checked first because it is the only one that
+ * cannot be renamed or shared, and every account here was made by a Discord
+ * sign-in. A username is next, since that is what the same profile stores. An
+ * email is last and deliberately the weakest read: people type a checkout an
+ * address that has nothing to do with the account they log in with, so an email
+ * match is only trusted when nothing else matched.
+ *
+ * Nothing is thrown when no account matches. A payment for someone who has never
+ * signed in here is a real thing that happens, and the caller decides what to
+ * make of it.
+ */
+export async function findUserByIdentity(identity: {
+  discordIds: string[];
+  usernames: string[];
+  emails: string[];
+}): Promise<{ user: typeof users.$inferSelect | null; matchedBy: "discordId" | "username" | "email" | null }> {
+  const discordIds = identity.discordIds.filter(Boolean);
+  const usernames = spellings(identity.usernames);
+  const emails = spellings(identity.emails);
+
+  const conditions: SQL[] = [];
+  if (discordIds.length) conditions.push(inArray(users.discordId, discordIds));
+  if (usernames.length) conditions.push(inArray(users.discordUsername, usernames));
+  // Compared lower on both sides: the signup form keeps whatever was typed into
+  // it, so "Brent@example.com" in the database is the same person as the
+  // lowercase address a checkout carries.
+  emails.forEach((email) => conditions.push(eq(sql`lower(${users.email})`, email)));
+
+  if (!conditions.length) return { user: null, matchedBy: null };
+  const rows = await db.select().from(users).where(or(...conditions));
+
+  const byId = new Set(discordIds);
+  const byUsername = new Set(usernames);
+  const byEmail = new Set(emails);
+  const rank = (row: typeof users.$inferSelect) =>
+    byId.has(row.discordId) ? 0 : byUsername.has(row.discordUsername) ? 1 : byEmail.has(row.email.toLowerCase()) ? 2 : 3;
+
+  const best = rows.sort((a, b) => rank(a) - rank(b))[0];
+  if (!best) return { user: null, matchedBy: null };
+  const matchedBy = rank(best) === 0 ? "discordId" : rank(best) === 1 ? "username" : rank(best) === 2 ? "email" : null;
+  if (!matchedBy) return { user: null, matchedBy: null };
+  return { user: best, matchedBy };
+}
+
+/** A value and its lowercase form, so a stored spelling can be found either way. */
+function spellings(values: string[]): string[] {
+  const out: string[] = [];
+  for (const value of values) {
+    for (const form of [value, value.toLowerCase()]) {
+      if (form && !out.includes(form)) out.push(form);
+    }
+  }
+  return out;
 }
 
 export type StudentSummary = {
