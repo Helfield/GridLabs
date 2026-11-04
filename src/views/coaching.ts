@@ -58,10 +58,11 @@ export function coachingHubPage(
   user: Nav,
   products: Product[],
   held: Held[],
-  opts: { notice?: Notice } = {},
+  opts: { notice?: Notice; checkout?: Record<string, string> } = {},
 ): string {
   const live = held.filter((h) => entitlementCounts(h)).map((h) => h.slug);
   const staff = user.role === "coach" || user.role === "moderator";
+  const checkout = opts.checkout ?? {};
 
   const accessPanel = `
 <section class="panel">
@@ -69,7 +70,7 @@ export function coachingHubPage(
   <div class="panel__body">
     ${
       held.length === 0
-        ? `<div class="empty"><strong>Nothing on your account yet</strong>The two packages are below. Once you've paid the club, a coach puts it on the account you sign in with.</div>`
+        ? `<div class="empty"><strong>Nothing on your account yet</strong>The two packages are below. Buy one, or message a coach in the club Discord and they'll put it on the account you sign in with.</div>`
         : `<div class="reflist">${held
             .map((h) => {
               const active = entitlementCounts(h);
@@ -102,12 +103,18 @@ export function coachingHubPage(
   const offerCards = products
     .map((p) => {
       const mine = live.includes(p.slug);
+      const url = checkout[p.slug];
       return `
 <section class="panel">
   <div class="panel__head"><h2>${escapeHtml(p.name)}</h2>${mine ? `<span class="tag">On your account</span>` : ""}</div>
   <div class="panel__body">
     <p class="lede">${escapeHtml(p.blurb)}</p>
     <p class="hint">${escapeHtml(p.unlocks)}</p>
+    ${
+      mine || !url
+        ? ""
+        : `<a class="btn btn--ghost" style="margin-top:10px" href="${escapeHtml(url)}" target="_blank" rel="noopener">Buy on Whop</a>`
+    }
   </div>
 </section>`;
     })
@@ -117,8 +124,8 @@ export function coachingHubPage(
 <section class="panel">
   <div class="panel__head"><h2>How to buy</h2></div>
   <div class="panel__body">
-    <p class="lede">Checkout isn't live yet. Message a coach in the club Discord, pay the club, and they add the package to the account you sign in with.</p>
-    <p class="hint">Access is tied to your Discord sign-in, not to an email, so use the same account in the app and on this site.</p>
+    <p class="lede">Checkout runs on Whop. Pay there and the package goes on the account you sign in with.</p>
+    <p class="hint">Access follows your Discord sign-in rather than an email, so use the same Discord account in the app, on this site and at checkout. If it hasn't appeared on your account within a few minutes, message a coach in the club Discord and they'll add it by hand.</p>
   </div>
 </section>`;
 

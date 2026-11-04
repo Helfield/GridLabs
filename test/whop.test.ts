@@ -11,6 +11,7 @@ import {
   whopEventAction,
   WHOP_PLAN_MAP,
   WHOP_SLUGS,
+  WHOP_CHECKOUT_LINKS,
 } from "../src/whop";
 import { LIVE_EVENTS, ONE_TO_ONE } from "../src/coachingRules";
 
@@ -286,5 +287,17 @@ test("a payload that isn't an object at all is read as an empty one", () => {
     const ev = readWhopEvent(payload);
     expect(ev.type).toBe("");
     expect(ev.planIds).toEqual([]);
+  }
+});
+
+// ---------------------------------------------------------------- checkout
+
+test("the checkout pages and the payload map name the same two packages", () => {
+  // The page sells a package by link and the webhook grants one by payload id, kept
+  // apart because Whop may name a payload id that isn't a clickable link. If the two
+  // disagree, someone pays for one package and is given the other.
+  expect(new Set(Object.keys(WHOP_CHECKOUT_LINKS))).toEqual(new Set([ONE_TO_ONE, LIVE_EVENTS]));
+  for (const [slug, url] of Object.entries(WHOP_CHECKOUT_LINKS)) {
+    expect(planSlugFor([url.slice(url.lastIndexOf("/") + 1)])).toBe(slug);
   }
 });

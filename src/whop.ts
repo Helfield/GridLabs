@@ -3,7 +3,9 @@
  *
  * Reading a Whop webhook: whether a delivery really came from Whop, and what it is
  * asking the club to do. No database and no HTTP in here, so a payload written by
- * hand proves every branch. The same split as src/coachingRules.ts.
+ * hand proves every branch. The same split as src/coachingRules.ts. It also holds
+ * the ids Whop is mapped to and the checkout links the packages are sold at, so the
+ * provider's own identifiers live in one file rather than in a page.
  *
  * Whop names its fields by API version, and the version pinned on the webhook
  * decides which shape arrives. Nobody has read a real delivery from this business
@@ -33,6 +35,20 @@ export const WHOP_PLAN_MAP: Record<string, string> = {
 
 /** The packages Whop is allowed to write. Anything else on an account came from a coach. */
 export const WHOP_SLUGS: ReadonlySet<string> = new Set(Object.values(WHOP_PLAN_MAP));
+
+/**
+ * The two checkout pages, keyed by package slug, as the owner wrote them.
+ *
+ * Deliberately not derived from WHOP_PLAN_MAP. That map holds whatever id a
+ * delivery happens to name, and Whop may one day name a `variant_...` there;
+ * these are the links a person clicks, and the plan links are what the shop
+ * answers on. Both list the same two ids today, and a change to one should be
+ * checked against the other rather than inherited from it.
+ */
+export const WHOP_CHECKOUT_LINKS: Record<string, string> = {
+  [ONE_TO_ONE]: "https://whop.com/checkout/plan_rD3iTBA9eZZ3B",
+  [LIVE_EVENTS]: "https://whop.com/checkout/plan_mdBqlDxD38Ryj",
+};
 
 /**
  * How far back a delivery may be signed.

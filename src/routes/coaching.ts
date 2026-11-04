@@ -4,9 +4,10 @@
  * The paid-coaching routes.
  *
  * Everything here asks the entitlements table the same question: does this
- * account hold this package. Nothing reads a payment provider and nothing reads
- * users.role for access, so connecting Whop later means writing those rows from
- * its webhook and changing none of this.
+ * account hold this package. Nothing reads a payment provider to decide that and
+ * nothing reads users.role for access, so connecting Whop's webhook changes none
+ * of this. The one place the provider appears is the buy link on the offer page,
+ * which points at a checkout page and grants nothing.
  */
 
 import { Hono, type Context } from "hono";
@@ -32,6 +33,7 @@ import {
   type CoachingProfile,
 } from "../db/coaching";
 import { LIVE_EVENTS, ONE_TO_ONE, noteRemovableBy, validateIntake, validateNote } from "../coachingRules";
+import { WHOP_CHECKOUT_LINKS } from "../whop";
 import {
   coachingAdminPage,
   coachingHubPage,
@@ -73,7 +75,7 @@ coachingRoutes.get("/", async (c) => {
   const user = await currentUser(c);
   if (!user) return c.redirect("/login");
   const [products, held] = await Promise.all([listCoachingProducts(), getEntitlementsForUser(user.id)]);
-  return c.html(coachingHubPage(user, products, held, { notice: readNotice(c) }));
+  return c.html(coachingHubPage(user, products, held, { notice: readNotice(c), checkout: WHOP_CHECKOUT_LINKS }));
 });
 
 /** Gated on the Live events package: a member of the club can see the season, this is what they paid for. */
@@ -125,7 +127,7 @@ async function liveRounds(now: Date) {
  * told to pay the club for it would send them to the wrong place.
  */
 const refused = (c: Ctx) =>
-  c.redirect(back("/coaching", "error", "The 1-on-1 package isn't on your account yet. Once the club has your payment, a coach puts it on."));
+  c.redirect(back("/coaching", "error", "The 1-on-1 package isn't on your account yet. Buy it below, or message a coach in the Discord and they'll put it on by hand."));
 
 /**
  * What the form holds when it isn't holding a driver's own submission back.
